@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "public": true,
+  "rewrites": [
+    { "source": "/join", "destination": "/mobile.html" }
+  ]
+}

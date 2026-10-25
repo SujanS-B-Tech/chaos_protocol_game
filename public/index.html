@@ -8,7 +8,7 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "/vendor/three/build/three.module.js"
+      "three": "/vendor/three.module.js"
     }
   }
   </script>
@@ -119,8 +119,10 @@
             </div>
             <div class="brand-subtitle">ONE GAME, DIFFERENT REALITIES // CO-OP INSTALLATION</div>
           </div>
-          <div>
-            <label style="font-size:12px;color:var(--text-muted);margin-right:8px">MISSION:</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="serverStatusBadge" class="pill warn">INITIALIZING...</span>
+            <button id="serverConfigBtn" type="button" class="pill" style="cursor:pointer;background:transparent;padding:5px 10px">⚙ SERVER</button>
+            <label style="font-size:12px;color:var(--text-muted);margin-left:6px;margin-right:4px">MISSION:</label>
             <select id="missionSelect" class="pill" style="background:#0b1424;color:#fff;border-color:var(--border-line);font-size:13px;padding:6px 12px">
               <option value="1">Mission 1: The Fractured Gate</option>
               <option value="2">Mission 2: Neon Labyrinth</option>
@@ -202,7 +204,8 @@
     </div>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
+  <script src="/vendor/socket.io.min.js"></script>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script src="/js/audio.js"></script>
   <script type="module" src="/js/host.js"></script>
 </body>

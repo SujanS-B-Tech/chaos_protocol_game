@@ -1,5 +1,9 @@
 (() => {
-  const socket = io();
+  const urlParams = new URLSearchParams(window.location.search);
+  const customServer = urlParams.get('server') || localStorage.getItem('chaos_server_url');
+  const serverUrl = customServer || window.location.origin;
+  const socket = (typeof io !== 'undefined') ? io(serverUrl, { timeout: 6000, reconnectionAttempts: 4 }) : null;
+
   let roomCode = null;
   let myRole = null;
   let myPlayerId = null;

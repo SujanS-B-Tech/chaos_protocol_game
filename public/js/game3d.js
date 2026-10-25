@@ -1,4 +1,4 @@
-import * as THREE from '/vendor/three/build/three.module.js';
+import * as THREE from 'three';
 
 export class World3D {
   constructor(canvasContainer) {
