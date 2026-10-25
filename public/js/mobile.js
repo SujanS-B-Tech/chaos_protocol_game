@@ -2,7 +2,178 @@
   const urlParams = new URLSearchParams(window.location.search);
   const customServer = urlParams.get('server') || localStorage.getItem('chaos_server_url');
   const serverUrl = customServer || window.location.origin;
-  const socket = (typeof io !== 'undefined') ? io(serverUrl, { timeout: 6000, reconnectionAttempts: 4 }) : null;
+
+  // Unified Network Client (Supports Socket.IO and WebRTC PeerJS fallback for Vercel)
+  class NetworkClient {
+    constructor() {
+      this.handlers = new Map();
+      this.socket = null;
+      this.peer = null;
+      this.peerConn = null;
+      this.isPeer = false;
+      this.connected = false;
+      this.pendingQueue = [];
+    }
+
+    on(event, fn) {
+      if (!this.handlers.has(event)) {
+        this.handlers.set(event, []);
+      }
+      this.handlers.get(event).push(fn);
+    }
+
+    emit(event, data = {}) {
+      if (this.socket && !this.isPeer && this.connected) {
+        this.socket.emit(event, data);
+        return;
+      }
+      if (this.peerConn && this.peerConn.open) {
+        this.peerConn.send({ type: event, ...data });
+        return;
+      }
+      this.pendingQueue.push({ event, data });
+    }
+
+    trigger(event, data) {
+      const fns = this.handlers.get(event) || [];
+      fns.forEach(fn => {
+        try { fn(data); } catch (e) { console.error("[Network] Handler error:", e); }
+      });
+    }
+
+    connect(url, targetRoomCode) {
+      const isVercel = window.location.hostname.includes('vercel.app');
+
+      // If on Vercel without a custom backend server, skip Socket.IO and connect via WebRTC PeerJS directly
+      if (isVercel && !customServer) {
+        console.log("[Mobile] Vercel environment detected — connecting via WebRTC PeerJS.");
+        this.connectPeer(targetRoomCode);
+        return;
+      }
+
+      if (typeof io !== 'undefined') {
+        try {
+          this.socket = io(url, { timeout: 3500, reconnectionAttempts: 2 });
+
+          this.socket.on('connect', () => {
+            console.log("[Mobile] Connected via Socket.IO:", this.socket.id);
+            this.connected = true;
+            this.flushQueue();
+          });
+
+          this.socket.on('connect_error', () => {
+            console.warn("[Mobile] Socket.IO server unavailable — falling back to WebRTC PeerJS...");
+            this.connectPeer(targetRoomCode);
+          });
+
+          ['room:joined', 'room:update', 'notice', 'game:sound', 'game:event'].forEach(evt => {
+            this.socket.on(evt, data => this.trigger(evt, data));
+          });
+          return;
+        } catch (_) {}
+      }
+
+      this.connectPeer(targetRoomCode);
+    }
+
+    connectPeer(targetRoomCode) {
+      if (this.isPeer && this.peerConn && this.peerConn.open) return;
+      this.isPeer = true;
+
+      const code = (targetRoomCode || paramRoom || (el.joinCodeInput ? el.joinCodeInput.value : "")).toUpperCase().trim();
+      if (!code) {
+        console.warn("[Mobile] No room code available to connect peer.");
+        return;
+      }
+
+      if (typeof Peer === 'undefined') {
+        console.error("[Mobile] PeerJS library not loaded!");
+        return;
+      }
+
+      const hostPeerId = `chaos-room-${code.toLowerCase()}`;
+      console.log(`[Mobile] Connecting to WebRTC Host: ${hostPeerId}`);
+
+      try {
+        if (!this.peer) {
+          this.peer = new Peer(null, {
+            debug: 1,
+            config: {
+              iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:global.stun.twilio.com:3478' }
+              ]
+            }
+          });
+
+          this.peer.on('open', id => {
+            console.log("[Mobile] Client Peer ready:", id);
+            this.openDataChannel(hostPeerId);
+          });
+
+          this.peer.on('error', err => {
+            console.warn("[Mobile] Peer client error:", err);
+          });
+        } else if (this.peer.open) {
+          this.openDataChannel(hostPeerId);
+        }
+      } catch (e) {
+        console.error("[Mobile] Failed to initialize Peer client", e);
+      }
+    }
+
+    openDataChannel(hostPeerId) {
+      if (this.peerConn) {
+        try { this.peerConn.close(); } catch (_) {}
+      }
+
+      this.peerConn = this.peer.connect(hostPeerId, { reliable: true });
+
+      this.peerConn.on('open', () => {
+        console.log("[Mobile] WebRTC DataChannel connected to Host!");
+        this.connected = true;
+        if (el.headerRoleBadge) {
+          el.headerRoleBadge.textContent = "CONNECTED (P2P)";
+          el.headerRoleBadge.style.color = "var(--green)";
+        }
+        this.flushQueue();
+      });
+
+      this.peerConn.on('data', data => {
+        if (data && data.type) {
+          if (data.type === 'room:update') {
+            this.trigger('room:update', data.state);
+          } else if (data.type === 'room:joined') {
+            this.trigger('room:joined', data);
+          } else if (data.type === 'notice') {
+            this.trigger('notice', data);
+          } else if (data.type === 'game:sound') {
+            this.trigger('game:sound', data);
+          } else if (data.type === 'game:event') {
+            this.trigger('game:event', data);
+          }
+        }
+      });
+
+      this.peerConn.on('close', () => {
+        console.warn("[Mobile] DataChannel closed");
+        this.connected = false;
+      });
+
+      this.peerConn.on('error', err => {
+        console.warn("[Mobile] DataChannel error:", err);
+      });
+    }
+
+    flushQueue() {
+      while (this.pendingQueue.length > 0) {
+        const item = this.pendingQueue.shift();
+        this.emit(item.event, item.data);
+      }
+    }
+  }
+
+  const socket = new NetworkClient();
 
   let roomCode = null;
   let myRole = null;
@@ -30,11 +201,13 @@
   };
 
   // Pre-fill room code from URL query parameter if present
-  const urlParams = new URLSearchParams(window.location.search);
   const paramRoom = urlParams.get('room');
   if (paramRoom && el.joinCodeInput) {
     el.joinCodeInput.value = paramRoom.toUpperCase().trim();
   }
+
+  // Connect network client
+  socket.connect(serverUrl, paramRoom);
 
   // Haptic feedback utility
   function triggerHaptic(ms = 25) {
@@ -56,6 +229,9 @@
     }
 
     triggerHaptic(30);
+    if (!socket.connected && socket.isPeer) {
+      socket.connectPeer(code);
+    }
     socket.emit('room:join', { code, name, requestedRole });
   });
 

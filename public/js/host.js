@@ -1,5 +1,5 @@
 import { World3D } from './game3d.js';
-import { MISSIONS } from './missions.js';
+import { MISSIONS, ROLE_INFO } from './missions.js';
 
 (() => {
   let world = null;
@@ -10,6 +10,8 @@ import { MISSIONS } from './missions.js';
   let isStandalone = false;
   let standaloneTimer = null;
   let standaloneState = null;
+  let peerHost = null;
+  const peerClients = new Map(); // peerId -> { id, conn, name, role, connected }
 
   // DOM elements
   const el = {
@@ -100,7 +102,13 @@ import { MISSIONS } from './missions.js';
         console.log("[Host] Connected to server:", socket.id);
         updateServerStatus("● LIVE MULTIPLAYER CONNECTED", "good");
         isStandalone = false;
-        socket.emit('room:create', { hostName: "Mission Control", levelId: currentLevelId });
+        const savedPublicUrl = localStorage.getItem('chaos_public_join_url');
+        socket.emit('room:create', {
+          hostName: "Mission Control",
+          levelId: currentLevelId,
+          clientOrigin: (window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('127.0.0.1')) ? window.location.origin : null,
+          publicUrl: savedPublicUrl || null
+        });
       });
 
       socket.on('connect_error', (err) => {
@@ -139,14 +147,272 @@ import { MISSIONS } from './missions.js';
       console.warn("Failed to initialize Socket.IO client", e);
       setStandaloneMode(true);
     }
-  }
-
-  function setStandaloneMode(active) {
+   function setStandaloneMode(active) {
     isStandalone = active;
     if (active) {
-      updateServerStatus(isVercelHost ? "● STANDALONE 3D MODE (VERCEL)" : "● LOCAL 3D MODE", "warn");
+      updateServerStatus(isVercelHost ? "● WEBRTC CLOUD P2P (VERCEL)" : "● LOCAL 3D MODE", "good");
       el.startBtn.disabled = false;
       el.startBtn.textContent = "▶ START MISSION (SOLO / DEMO)";
+      initStandaloneGame();
+      initPeerHost();
+    }
+  }
+
+  // ----------------------------------------------------
+  // WEBRTC PEER-TO-PEER HOST (FOR SERVERLESS VERCEL)
+  // ----------------------------------------------------
+  function initPeerHost() {
+    if (typeof Peer === 'undefined') {
+      console.warn("[Host] PeerJS library not loaded; WebRTC peer host cannot start.");
+      return;
+    }
+    if (peerHost) {
+      try { peerHost.destroy(); } catch (_) {}
+    }
+
+    const hostPeerId = `chaos-room-${roomCode.toLowerCase()}`;
+    console.log(`[Host] Initializing WebRTC PeerHost on: ${hostPeerId}`);
+
+    try {
+      peerHost = new Peer(hostPeerId, {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
+          ]
+        }
+      });
+
+      peerHost.on('open', id => {
+        console.log(`[Host] WebRTC PeerHost is LIVE! ID: ${id}`);
+        updateServerStatus("● WEBRTC LIVE (VERCEL P2P)", "good");
+        showScreenAlert("📡 P2P WebRTC Host Online: Scan QR code from phones to join!", 3500);
+      });
+
+      peerHost.on('error', err => {
+        console.warn("[Host] PeerHost error:", err.type, err.message);
+        if (err.type === 'unavailable-id') {
+          // If ID collision, roll new code and retry
+          roomCode = Math.random().toString(36).slice(2, 6).toUpperCase();
+          el.roomCodeDisplay.textContent = roomCode;
+          el.roomCodeHeader.textContent = roomCode;
+          const newJoin = `${window.location.origin}/join?room=${roomCode}`;
+          el.joinUrlDisplay.textContent = newJoin;
+          setQRCode(newJoin);
+          setTimeout(initPeerHost, 600);
+        }
+      });
+
+      peerHost.on('connection', conn => {
+        console.log("[Host] Incoming WebRTC connection from phone:", conn.peer);
+
+        conn.on('open', () => {
+          console.log("[Host] Phone DataChannel opened:", conn.peer);
+        });
+
+        conn.on('data', data => {
+          handlePeerClientMessage(conn, data);
+        });
+
+        conn.on('close', () => {
+          console.log("[Host] Phone disconnected:", conn.peer);
+          peerClients.delete(conn.peer);
+          broadcastPeerState();
+        });
+
+        conn.on('error', err => {
+          console.warn("[Host] Peer connection error:", conn.peer, err);
+          peerClients.delete(conn.peer);
+          broadcastPeerState();
+        });
+      });
+    } catch (e) {
+      console.error("[Host] Failed to initialize PeerHost:", e);
+    }
+  }
+
+  function handlePeerClientMessage(conn, data) {
+    if (!data || typeof data !== 'object') return;
+    const { type } = data;
+
+    if (type === 'room:join') {
+      const { name, requestedRole } = data;
+      const cleanName = (name || "Agent").trim().slice(0, 16) || "Agent";
+
+      let role = requestedRole;
+      const validRoles = ["navigator", "observer", "controller"];
+      const activeRoles = Array.from(peerClients.values()).map(c => c.role);
+
+      if (!validRoles.includes(role) || activeRoles.includes(role)) {
+        role = validRoles.find(r => !activeRoles.includes(r)) || "spectator";
+      }
+
+      const playerObj = {
+        id: conn.peer,
+        conn,
+        name: cleanName,
+        role,
+        connected: true
+      };
+      peerClients.set(conn.peer, playerObj);
+
+      conn.send({
+        type: 'room:joined',
+        code: roomCode,
+        playerId: conn.peer,
+        name: cleanName,
+        role,
+        roleInfo: ROLE_INFO[role] || null
+      });
+
+      showScreenAlert(`📱 ${cleanName} joined as ${role.toUpperCase()}!`, 3000);
+      if (window.sound) window.sound.play('node_success');
+
+      if (!standaloneState) initStandaloneGame();
+      standaloneState.messages.push({ text: `Agent ${cleanName} connected as ${role.toUpperCase()}.`, kind: "good" });
+
+      broadcastPeerState();
+      return;
+    }
+
+    if (type === 'player:move') {
+      const { dx, dz } = data;
+      if (typeof dx === 'number' && typeof dz === 'number') {
+        moveStandaloneAvatar(dx, dz);
+      }
+    } else if (type === 'node:activate') {
+      const { nodeId } = data;
+      if (typeof nodeId === 'number') {
+        activateStandaloneNode(nodeId);
+      }
+    } else if (type === 'observer:alert') {
+      const { text, kind } = data;
+      if (window.sound) window.sound.play('hazard_alarm');
+      showScreenAlert(`⚠️ OBSERVER ALERT: ${text}`, 3500);
+      if (standaloneState) {
+        standaloneState.messages.push({ text: `[OBSERVER] ${text}`, kind: kind || "bad" });
+        applyState(standaloneState);
+      }
+    } else if (type === 'navigator:ping') {
+      const { text } = data;
+      if (window.sound) window.sound.play('bump');
+      showScreenAlert(`🧭 NAVIGATOR: ${text}`, 2500);
+      if (standaloneState) {
+        standaloneState.messages.push({ text: `[NAVIGATOR] ${text}`, kind: "info" });
+        applyState(standaloneState);
+      }
+    } else if (type === 'chat:send') {
+      const { text } = data;
+      const client = peerClients.get(conn.peer);
+      const author = client ? client.name : "Agent";
+      if (standaloneState) {
+        standaloneState.messages.push({ text: `${author}: ${text}`, kind: "info" });
+        applyState(standaloneState);
+      }
+    }
+  }
+
+  function getFilteredPeerPayload(role, playerId) {
+    const mission = MISSIONS[currentLevelId];
+    if (!standaloneState) return null;
+
+    const publicPlayers = Array.from(peerClients.values()).map(p => ({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      connected: p.connected
+    }));
+
+    const common = {
+      code: roomCode,
+      levelId: currentLevelId,
+      missionName: mission.name,
+      status: standaloneState.status,
+      timeLeft: standaloneState.timeLeft,
+      stability: standaloneState.stability,
+      players: publicPlayers,
+      messages: standaloneState.messages.slice(-10),
+      myRole: role,
+      roleInfo: ROLE_INFO[role] || null
+    };
+
+    if (role === 'navigator') {
+      return {
+        ...common,
+        position: standaloneState.position,
+        facing: standaloneState.facing,
+        exit: mission.exit,
+        start: mission.start,
+        mapLayout: mission.layout,
+        bridges: standaloneState.bridges.map(b => ({ id: b.id, active: b.active, tiles: b.tiles })),
+        doors: standaloneState.doors.map(d => ({ id: d.id, open: d.open, x: d.x, z: d.z })),
+        routeClue: mission.clues?.navigator?.route || "",
+        waypoints: mission.clues?.navigator?.waypoints || [],
+        canMove: standaloneState.status === "playing"
+      };
+    }
+
+    if (role === 'observer') {
+      return {
+        ...common,
+        position: standaloneState.position,
+        hazards: standaloneState.hazards,
+        hazardSummary: mission.clues?.observer?.hazardSummary || "",
+        anomalyHints: mission.clues?.observer?.anomalyHints || "",
+        canScan: standaloneState.status === "playing"
+      };
+    }
+
+    if (role === 'controller') {
+      return {
+        ...common,
+        nodes: standaloneState.nodes.map(n => ({
+          id: n.id,
+          name: n.name,
+          color: n.color,
+          active: n.active,
+          label: n.label
+        })),
+        bridges: standaloneState.bridges.map(b => ({ id: b.id, active: b.active })),
+        doors: standaloneState.doors.map(d => ({ id: d.id, open: d.open })),
+        wiringClue: mission.clues?.controller?.wiring || "",
+        canControl: standaloneState.status === "playing"
+      };
+    }
+
+    return common;
+  }
+
+  function broadcastPeerState() {
+    const publicPlayers = Array.from(peerClients.values()).map(p => ({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      connected: p.connected
+    }));
+
+    renderPlayerSlots(publicPlayers);
+
+    if (el.startBtn && isStandalone) {
+      el.startBtn.disabled = false;
+      const count = publicPlayers.length;
+      if (count > 0) {
+        el.startBtn.textContent = `▶ START MULTIPLAYER MISSION (${count}/3 READY)`;
+      } else {
+        el.startBtn.textContent = "▶ START MISSION (SOLO / DEMO)";
+      }
+    }
+
+    for (const client of peerClients.values()) {
+      if (client.conn && client.conn.open) {
+        const payload = getFilteredPeerPayload(client.role, client.id);
+        if (payload) {
+          try {
+            client.conn.send({ type: 'room:update', state: payload });
+          } catch (_) {}
+        }
+      }
     }
   }
 
@@ -165,7 +431,7 @@ import { MISSIONS } from './missions.js';
     // Fallback if image fails to load
     el.qrImage.onerror = () => {
       // Inline SVG QR code icon fallback
-      el.qrImage.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 24 24' fill='none' stroke='%2300f0ff' stroke-width='1.5'><rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/></svg>";
+      el.qrImage.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 24 24' fill='none' stroke='%2300f0ff' stroke-width='1.5'><rect x='3' y='3' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/><rect x='3' y='14' width='7' height='7'/><rect x='14' y='14' width='7' height='7'/></svg>";
     };
 
     // If local server provides /api/qr, fetch data URL in background
@@ -195,7 +461,7 @@ import { MISSIONS } from './missions.js';
     const mission = MISSIONS[currentLevelId];
     standaloneState = {
       code: roomCode,
-      status: "playing",
+      status: "lobby",
       levelId: currentLevelId,
       position: { ...mission.start },
       facing: "south",
@@ -209,25 +475,41 @@ import { MISSIONS } from './missions.js';
       sequenceProgress: 0,
       score: 0,
       messages: [
-        { text: `Mission ${mission.name} initialized. Explore and restore power!`, kind: "good" }
+        { text: `Mission ${mission.name} initialized. Awaiting operative synchronization...`, kind: "good" }
       ]
     };
 
     lastState = standaloneState;
     applyState(standaloneState);
+  }
 
-    if (standaloneTimer) clearInterval(standaloneTimer);
-    standaloneTimer = setInterval(() => {
-      if (!standaloneState || standaloneState.status !== "playing") return;
-      standaloneState.timeLeft -= 1;
-      if (standaloneState.timeLeft <= 0) {
-        standaloneState.timeLeft = 0;
-        standaloneState.status = "failed";
-        clearInterval(standaloneTimer);
-        showResults(false, standaloneState);
-      }
+  function startStandaloneGame() {
+    if (!standaloneState) initStandaloneGame();
+    standaloneState.status = "intro";
+    applyState(standaloneState);
+    if (window.sound) window.sound.play("game_start");
+    showScreenAlert("MISSION SEQUENCE INITIALIZED. Synchronizing neural links...", 2500);
+
+    setTimeout(() => {
+      if (!standaloneState || standaloneState.status !== "intro") return;
+      standaloneState.status = "playing";
       applyState(standaloneState);
-    }, 1000);
+      showScreenAlert("DIMENSIONAL STABILIZERS ENGAGED. Communicate and advance!", 3000);
+
+      if (standaloneTimer) clearInterval(standaloneTimer);
+      standaloneTimer = setInterval(() => {
+        if (!standaloneState || standaloneState.status !== "playing") return;
+        standaloneState.timeLeft -= 1;
+        if (standaloneState.timeLeft <= 0) {
+          standaloneState.timeLeft = 0;
+          standaloneState.status = "failed";
+          clearInterval(standaloneTimer);
+          showResults(false, standaloneState);
+        }
+        applyState(standaloneState);
+      }, 1000);
+    }, 2500);
+  }1000);
   }
 
   function moveStandaloneAvatar(dx, dz) {
@@ -413,6 +695,10 @@ import { MISSIONS } from './missions.js';
     } else if (state.status === 'failed') {
       showResults(false, state);
     }
+
+    if (isStandalone && peerHost) {
+      broadcastPeerState();
+    }
   }
 
   // 5. EVENT LISTENERS & USER CONTROLS
@@ -422,7 +708,7 @@ import { MISSIONS } from './missions.js';
       if (socket && !isStandalone) {
         socket.emit('game:start');
       } else {
-        initStandaloneGame();
+        startStandaloneGame();
       }
       showScreenAlert("3D LEVEL ACTIVE — Move with WASD / Arrows, Press E near a node to activate!", 4000);
     });
@@ -433,7 +719,7 @@ import { MISSIONS } from './missions.js';
     if (socket && !isStandalone) {
       socket.emit('game:start');
     } else {
-      initStandaloneGame();
+      startStandaloneGame();
     }
   });
 
@@ -564,6 +850,64 @@ import { MISSIONS } from './missions.js';
           window.location.reload();
         }
       }
+    });
+  }
+
+  // Multi-Network / 4G Data Tunnel Configuration
+  const toggleNetworkBtn = document.getElementById('toggleNetworkModeBtn');
+  const customUrlBox = document.getElementById('customUrlBox');
+  const customUrlInput = document.getElementById('customUrlInput');
+  const saveCustomUrlBtn = document.getElementById('saveCustomUrlBtn');
+  const resetCustomUrlBtn = document.getElementById('resetCustomUrlBtn');
+
+  const savedTunnel = localStorage.getItem('chaos_public_join_url');
+  if (savedTunnel && customUrlInput) {
+    customUrlInput.value = savedTunnel;
+  }
+
+  if (toggleNetworkBtn && customUrlBox) {
+    toggleNetworkBtn.addEventListener('click', () => {
+      const isHidden = (customUrlBox.style.display === 'none' || !customUrlBox.style.display);
+      customUrlBox.style.display = isHidden ? 'block' : 'none';
+      if (isHidden && customUrlInput) customUrlInput.focus();
+    });
+  }
+
+  if (saveCustomUrlBtn && customUrlInput) {
+    saveCustomUrlBtn.addEventListener('click', () => {
+      let val = customUrlInput.value.trim();
+      if (!val) {
+        alert("Please enter your tunnel or public URL (e.g. https://xxxx.loca.lt or https://xxxx.ngrok-free.app)");
+        return;
+      }
+      if (!val.startsWith('http://') && !val.startsWith('https://')) {
+        val = 'https://' + val;
+        customUrlInput.value = val;
+      }
+      val = val.replace(/\/$/, "");
+      localStorage.setItem('chaos_public_join_url', val);
+
+      if (socket && socket.connected) {
+        socket.emit('room:setPublicUrl', { url: val });
+      } else {
+        const newUrl = `${val}/join?room=${roomCode}`;
+        el.joinUrlDisplay.textContent = newUrl;
+        setQRCode(newUrl);
+      }
+      updateServerStatus("● PUBLIC TUNNEL ACTIVE", "good");
+      showScreenAlert("🌐 Public Join URL active! QR code updated for 4G/different networks.", 4000);
+    });
+  }
+
+  if (resetCustomUrlBtn && customUrlInput) {
+    resetCustomUrlBtn.addEventListener('click', () => {
+      localStorage.removeItem('chaos_public_join_url');
+      customUrlInput.value = '';
+      if (socket && socket.connected) {
+        socket.emit('room:setPublicUrl', { url: null });
+      }
+      updateServerStatus("● LOCAL NETWORK", "good");
+      showScreenAlert("Switched back to local Wi-Fi IP.", 3000);
     });
   }
 

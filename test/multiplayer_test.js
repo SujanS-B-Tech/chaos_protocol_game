@@ -1,8 +1,45 @@
 const io = require("socket.io-client");
+const http = require("http");
+const path = require("path");
+const { fork } = require("child_process");
 
 const SERVER_URL = "http://localhost:3000";
+let serverProcess = null;
+
+async function ensureServerRunning() {
+  const isRunning = await new Promise(resolve => {
+    const req = http.get("http://localhost:3000/health", res => {
+      resolve(res.statusCode === 200);
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(1000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+
+  if (!isRunning) {
+    console.log("Starting local test server on port 3000...");
+    serverProcess = fork(path.join(__dirname, "../server.js"), [], {
+      env: { ...process.env, PORT: 3000 },
+      stdio: "ignore"
+    });
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 250));
+      const ready = await new Promise(resolve => {
+        const req = http.get("http://localhost:3000/health", res => resolve(res.statusCode === 200));
+        req.on("error", () => resolve(false));
+      });
+      if (ready) {
+        console.log("✔ Test server ready");
+        break;
+      }
+    }
+  }
+}
 
 async function runIntegrationTest() {
+  await ensureServerRunning();
   console.log("=== STARTING CHAOS PROTOCOL MULTIPLAYER INTEGRATION TEST ===");
 
   // 1. Connect Host
@@ -237,11 +274,17 @@ async function runIntegrationTest() {
   navSocket.disconnect();
   obsSocket.disconnect();
   ctlSocket.disconnect();
+  if (serverProcess) {
+    serverProcess.kill();
+  }
   console.log("\n✔ ALL INTEGRATION TESTS PASSED WITH 100% SUCCESS!");
   process.exit(0);
 }
 
 runIntegrationTest().catch(err => {
+  if (serverProcess) {
+    serverProcess.kill();
+  }
   console.error("\n❌ TEST FAILED:", err);
   process.exit(1);
 });

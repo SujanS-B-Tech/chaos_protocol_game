@@ -1,5 +1,38 @@
 // Client & Host mission definitions for Chaos Protocol
 
+export const ROLE_INFO = {
+  navigator: {
+    id: "navigator",
+    name: "Navigator",
+    title: "Pathfinder & Tactician",
+    badge: "NAV-01",
+    color: "#00f0ff",
+    accent: "rgba(0, 240, 255, 0.2)",
+    icon: "🧭",
+    description: "You possess the orbital radar. Guide the avatar along safe corridors and navigate toward the exit portal."
+  },
+  observer: {
+    id: "observer",
+    name: "Observer",
+    title: "Hazard & Sensor Specialist",
+    badge: "OBS-02",
+    color: "#ffca68",
+    accent: "rgba(255, 202, 104, 0.2)",
+    icon: "👁️",
+    description: "You detect hidden quantum glitches, laser tripwires, and structural collapses. Alert the team before they trigger a trap."
+  },
+  controller: {
+    id: "controller",
+    name: "Controller",
+    title: "Quantum Systems Engineer",
+    badge: "CTL-03",
+    color: "#c084fc",
+    accent: "rgba(192, 132, 252, 0.2)",
+    icon: "⚡",
+    description: "You operate the quantum power nodes, deploy energy bridges, and unlock blast doors. Coordinate the activation sequence."
+  }
+};
+
 export const MISSIONS = {
   1: {
     id: 1,
@@ -45,7 +78,26 @@ export const MISSIONS = {
       { id: "h3", x: 8, z: 7, type: "laser_sensor", label: "Laser Tripwire", severity: "medium", triggered: false },
       { id: "h4", x: 10, z: 3, type: "quantum_glitch", label: "Phase Rift", severity: "high", triggered: false },
       { id: "h5", x: 7, z: 10, type: "unstable_core", label: "Void Sinkhole", severity: "critical", triggered: false }
-    ]
+    ],
+    clues: {
+      navigator: {
+        route: "PRIMARY VECTOR: Move South into the main corridor. Bridge at (3,5)-(4,5) requires Beta Conduit power. Exit portal lies at Sector 10-10 behind the Titan Gate.",
+        waypoints: [
+          { x: 1, z: 1, note: "Start Hub" },
+          { x: 1, z: 5, note: "Bridge Approach" },
+          { x: 5, z: 5, note: "East Crossing" },
+          { x: 10, z: 10, note: "Quantum Exit" }
+        ]
+      },
+      observer: {
+        hazardSummary: "5 ANOMALIES DETECTED. Critical rifts at (2,4), (5,8), and (7,10). Laser sensor at (8,7). Warn the navigator before entering these coordinates!",
+        anomalyHints: "Node sequence signature: The highest energy harmonic (Violet) must be engaged first to stabilize the conduit."
+      },
+      controller: {
+        wiring: "POWER GRID: Activating Node 1 (Beta) powers the Light Bridge. Node 2 (Violet) primes the grid. All 3 nodes must be fully engaged to unseal the Titan Gate.",
+        clue: "SEQUENCE FREQUENCY: Violet -> Cyan -> Amber. Premature activation will trip the surge breaker."
+      }
+    }
   },
   2: {
     id: 2,
@@ -89,7 +141,12 @@ export const MISSIONS = {
       { id: "h21", x: 3, z: 3, type: "laser_sensor", label: "Laser Sensor", severity: "high", triggered: false },
       { id: "h22", x: 6, z: 5, type: "quantum_glitch", label: "Voltage Leak", severity: "critical", triggered: false },
       { id: "h23", x: 9, z: 7, type: "unstable_core", label: "Flux Void", severity: "high", triggered: false }
-    ]
+    ],
+    clues: {
+      navigator: { route: "ROUTE INTEL: Travel South through western corridor, cross lower junction East to Sector 10-1.", waypoints: [] },
+      observer: { hazardSummary: "HIGH VOLTAGE HAZARDS: Watch coordinates (3,3) and (6,5) closely.", anomalyHints: "Amber harmonic triggers first." },
+      controller: { wiring: "AMBER node must trigger first, then Violet, then Cyan.", clue: "ORDER: Amber -> Violet -> Cyan." }
+    }
   },
   3: {
     id: 3,
@@ -130,6 +187,11 @@ export const MISSIONS = {
     hazards: [
       { id: "h31", x: 4, z: 2, type: "quantum_glitch", label: "Quantum Collapse", severity: "critical", triggered: false },
       { id: "h32", x: 7, z: 9, type: "unstable_core", label: "Gravitational Singularity", severity: "critical", triggered: false }
-    ]
+    ],
+    clues: {
+      navigator: { route: "REACH THE CORE: The exit singularity is at (6,6). All bridges must be aligned.", waypoints: [] },
+      observer: { hazardSummary: "EXTREME TEMPORAL DISTORTION: Avoid outer perimeter anomalies at (4,2) and (7,9).", anomalyHints: "Cyan initiates the sequence." },
+      controller: { wiring: "All 3 nodes deploy separate bridge spans leading to the core.", clue: "ORDER: Cyan -> Amber -> Violet." }
+    }
   }
 };

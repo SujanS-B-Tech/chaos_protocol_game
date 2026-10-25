@@ -86,6 +86,28 @@ The server will output:
 4. **Launch Mission**: Click **▶ START MISSION** on the laptop.
 5. **Spectators**: Can watch the shared 3D screen, monitor live dimension stability, and listen to the team coordinate!
 
+### 5. Connecting Phones on Another Network (Mobile 4G/5G or Different Wi-Fi)
+If players' phones are not on the same Wi-Fi network, a private local IP (e.g. `192.168.x.x`) cannot be reached. Use any of the following options:
+
+- **Option A (Instant Tunnel - Recommended)**:
+  1. Keep `npm start` running.
+  2. In a second terminal window, run:
+     ```bash
+     npx localtunnel --port 3000
+     ```
+     (or `ngrok http 3000` or `cloudflared tunnel --url http://localhost:3000`).
+  3. On the laptop game screen, click **🌐 CONNECT PHONES ON DIFFERENT NETWORK / 4G** under the QR code.
+  4. Paste your public HTTPS tunnel link (e.g., `https://xxxx.loca.lt`) and click **APPLY**.
+  5. The QR code on the laptop updates dynamically — any phone on any network can now scan and join!
+
+- **Option B (Start with PUBLIC_URL environment variable)**:
+  ```powershell
+  $env:PUBLIC_URL="https://your-tunnel-url.loca.lt"; npm start
+  ```
+
+- **Option C (Free Cloud Host)**:
+  Deploy to Render / Railway with `PUBLIC_URL=https://your-service.onrender.com`.
+
 ---
 
 ## 🧪 AUTOMATED TESTING & VERIFICATION

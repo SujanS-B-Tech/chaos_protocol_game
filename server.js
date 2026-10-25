@@ -35,6 +35,46 @@ function getLocalIp() {
   return `http://localhost:${PORT}`;
 }
 
+function formatUrl(url) {
+  if (!url || typeof url !== "string") return null;
+  let clean = url.trim().replace(/\/$/, "");
+  if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+    clean = `https://${clean}`;
+  }
+  return clean;
+}
+
+function resolveBaseUrl(socket, clientOrigin, customUrl) {
+  const formattedCustom = formatUrl(customUrl);
+  if (formattedCustom) return formattedCustom;
+
+  if (process.env.PUBLIC_URL) {
+    return formatUrl(process.env.PUBLIC_URL);
+  }
+
+  const formattedOrigin = formatUrl(clientOrigin);
+  if (formattedOrigin && !formattedOrigin.includes("localhost") && !formattedOrigin.includes("127.0.0.1")) {
+    return formattedOrigin;
+  }
+
+  const headers = socket?.handshake?.headers || {};
+  const origin = headers.origin || headers.referer;
+  if (origin && !origin.includes("localhost") && !origin.includes("127.0.0.1")) {
+    try {
+      const u = new URL(origin);
+      return `${u.protocol}//${u.host}`;
+    } catch (_) {}
+  }
+
+  const fwdProto = headers["x-forwarded-proto"] || "http";
+  const fwdHost = headers["x-forwarded-host"] || headers.host;
+  if (fwdHost && !fwdHost.includes("localhost") && !fwdHost.includes("127.0.0.1")) {
+    return `${fwdProto}://${fwdHost}`;
+  }
+
+  return SERVER_BASE_URL;
+}
+
 const SERVER_BASE_URL = getLocalIp();
 console.log(`[Chaos Protocol] Network address for mobile players: ${SERVER_BASE_URL}`);
 
@@ -551,7 +591,7 @@ io.on("connection", socket => {
   console.log(`[Socket] Connected: ${socket.id}`);
 
   // Create room (Host laptop)
-  socket.on("room:create", ({ hostName, levelId } = {}) => {
+  socket.on("room:create", ({ hostName, levelId, clientOrigin, publicUrl } = {}) => {
     const code = generateRoomCode();
     const room = createRoom(code, Number(levelId) || 1);
     rooms.set(code, room);
@@ -561,17 +601,41 @@ io.on("connection", socket => {
     socket.data.isHost = true;
     socket.join(code);
 
-    const joinUrl = `${SERVER_BASE_URL}/join?room=${code}`;
+    const baseUrl = resolveBaseUrl(socket, clientOrigin, publicUrl);
+    room.baseUrl = baseUrl;
+    const joinUrl = `${baseUrl}/join?room=${code}`;
 
     socket.emit("room:created", {
       code,
       joinUrl,
-      baseUrl: SERVER_BASE_URL,
+      baseUrl,
       levelId: room.levelId,
       mission: room.mission
     });
 
-    addMessage(room, `Lobby opened by Host (${hostName || "Mission Control"}).`, "info");
+    addMessage(room, `Lobby opened by Host (${hostName || "Mission Control"}). Base URL: ${baseUrl}`, "info");
+    broadcastRoom(room);
+  });
+
+  // Host dynamically updates public / tunnel URL
+  socket.on("room:setPublicUrl", ({ url } = {}) => {
+    const code = socket.data.room;
+    const room = rooms.get(code);
+    if (!room || !socket.data.isHost) return;
+
+    const baseUrl = resolveBaseUrl(socket, null, url);
+    room.baseUrl = baseUrl;
+    const joinUrl = `${baseUrl}/join?room=${code}`;
+
+    socket.emit("room:created", {
+      code,
+      joinUrl,
+      baseUrl,
+      levelId: room.levelId,
+      mission: room.mission
+    });
+
+    addMessage(room, `Public join address updated: ${baseUrl}`, "good");
     broadcastRoom(room);
   });
 

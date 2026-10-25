@@ -139,9 +139,28 @@
             <div style="font-size:12px;letter-spacing:0.15em;color:var(--text-muted)">OR ENTER ROOM CODE</div>
             <div class="room-code-tag" id="roomCodeDisplay">----</div>
             <div class="join-link-box" id="joinUrlDisplay">http://.../join</div>
-            <p style="font-size:12px;color:var(--text-muted);margin-top:14px;line-height:1.4">
-              Phones and laptop must be on the same local network, or use your public deployment URL.
+            <p style="font-size:12px;color:var(--text-muted);margin-top:10px;line-height:1.4">
+              Phones and laptop must be on the same Wi-Fi, or use a Public / Tunnel URL for 4G/5G mobile data.
             </p>
+            <button id="toggleNetworkModeBtn" type="button" class="pill" style="margin-top:10px;font-size:11px;cursor:pointer;background:rgba(0,240,255,0.08);border:1px solid var(--cyan);color:var(--cyan);padding:8px 12px;width:100%;font-weight:700">
+              🌐 CONNECT PHONES ON DIFFERENT NETWORK / 4G
+            </button>
+            <div id="customUrlBox" style="display:none;margin-top:10px;text-align:left;background:rgba(3,10,20,0.85);border:1px solid var(--border-line);border-radius:8px;padding:12px">
+              <label style="font-size:11px;color:var(--cyan);font-weight:700;display:block;margin-bottom:6px">
+                ENTER PUBLIC / TUNNEL URL:
+              </label>
+              <div style="display:flex;gap:6px;margin-bottom:8px">
+                <input id="customUrlInput" class="pill" placeholder="https://xxxx.loca.lt or ngrok" style="flex:1;background:#060d19;color:#fff;font-size:12px;padding:6px 10px;border-color:var(--border-line);text-align:left">
+                <button id="saveCustomUrlBtn" type="button" class="pill" style="background:var(--cyan);color:#030a14;font-weight:700;font-size:11px;padding:6px 12px;cursor:pointer">APPLY</button>
+                <button id="resetCustomUrlBtn" type="button" class="pill" style="background:transparent;color:#94a3b8;font-size:11px;padding:6px 8px;cursor:pointer" title="Reset to Local LAN IP">RESET</button>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);line-height:1.4">
+                <strong>Instant Free Tunnel (Zero Setup):</strong><br>
+                Run this in another terminal:<br>
+                <code style="color:var(--cyan);background:#071120;padding:2px 6px;border-radius:4px;display:inline-block;margin:3px 0">npx localtunnel --port 3000</code><br>
+                Paste the generated HTTPS link above & click Apply. The QR code will immediately update!
+              </div>
+            </div>
           </div>
 
           <!-- Role Slots & Launch Button -->
@@ -204,6 +223,8 @@
     </div>
   </div>
 
+  <script src="/vendor/peerjs.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="/vendor/socket.io.min.js"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script src="/js/audio.js"></script>
