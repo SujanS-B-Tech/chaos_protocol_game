@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>CHAOS PROTOCOL — Mobile Controller</title>
+  <link rel="stylesheet" href="/css/mobile.css">
+</head>
+<body>
+  <!-- Header Bar -->
+  <header class="mobile-header">
+    <div class="mobile-brand">
+      CHAOS <span>PROTOCOL</span>
+    </div>
+    <div id="headerRoleBadge" class="role-pill">
+      CONNECTING...
+    </div>
+  </header>
+
+  <!-- Live Status Bar -->
+  <div class="mobile-status-bar">
+    <div class="room-display">
+      ROOM: <strong id="headerRoomCode">----</strong>
+    </div>
+    <div class="room-display">
+      STABILITY: <strong id="stabilityVal" style="color:var(--green)">100%</strong>
+    </div>
+    <div class="timer-display" id="timerDisplay">
+      03:00
+    </div>
+  </div>
+
+  <main class="mobile-content">
+    <!-- Screen 1: Join Room -->
+    <div id="joinScreen" class="m-card">
+      <div class="m-card-title">INITIALIZE NEURAL LINK</div>
+      <p style="font-size:13px;color:#94a3b8;margin-bottom:14px">
+        Enter the room code displayed on the main laptop screen to synchronize with your team.
+      </p>
+
+      <label style="font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:0.1em;display:block;margin-bottom:4px">
+        4-LETTER ROOM CODE
+      </label>
+      <input id="joinCodeInput" class="m-input" maxlength="4" placeholder="ROOM" style="text-transform:uppercase;font-size:22px;font-weight:800;letter-spacing:0.2em;text-align:center;margin-bottom:14px;width:100%">
+
+      <label style="font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:0.1em;display:block;margin-bottom:4px">
+        OPERATIVE CALLSIGN
+      </label>
+      <input id="playerNameInput" class="m-input" maxlength="16" placeholder="Your Name" style="margin-bottom:16px;width:100%">
+
+      <label style="font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:0.1em;display:block;margin-bottom:8px">
+        DESIRED SPECIALIZATION
+      </label>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px" id="roleSelectContainer">
+        <button type="button" class="role-choice-btn m-card" data-role="navigator" style="padding:12px;text-align:left;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px solid #233250">
+          <span style="font-size:24px">🧭</span>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:var(--cyan)">NAVIGATOR</div>
+            <div style="font-size:11px;color:#94a3b8">Orbital Radar & Movement Direction</div>
+          </div>
+        </button>
+        <button type="button" class="role-choice-btn m-card" data-role="observer" style="padding:12px;text-align:left;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px solid #233250">
+          <span style="font-size:24px">👁️</span>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:var(--amber)">OBSERVER</div>
+            <div style="font-size:11px;color:#94a3b8">Hazard Telemetry & Emergency Alerts</div>
+          </div>
+        </button>
+        <button type="button" class="role-choice-btn m-card" data-role="controller" style="padding:12px;text-align:left;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px solid #233250">
+          <span style="font-size:24px">⚡</span>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:var(--violet)">CONTROLLER</div>
+            <div style="font-size:11px;color:#94a3b8">Quantum Power Grid & Light Bridges</div>
+          </div>
+        </button>
+      </div>
+
+      <button id="joinBtn" style="width:100%;padding:16px;font-size:16px;border-radius:10px;background:var(--cyan);color:#030a14;font-weight:800;border:none;cursor:pointer">
+        ⚡ CONNECT TO MISSION
+      </button>
+    </div>
+
+    <!-- Screen 2: Waiting in Lobby -->
+    <div id="lobbyWaitScreen" class="m-card hide" style="text-align:center;padding:30px 20px">
+      <div style="font-size:48px;margin-bottom:12px">📡</div>
+      <h3 style="font-family:var(--font-display);font-size:18px;margin-bottom:8px">
+        NEURAL LINK ESTABLISHED
+      </h3>
+      <p id="waitMessage" style="font-size:14px;color:var(--cyan);margin-bottom:16px;line-height:1.4">
+        Awaiting Mission Control to launch the operation...
+      </p>
+      <div style="display:inline-block;padding:8px 16px;background:rgba(0,240,255,0.1);border:1px solid var(--cyan);border-radius:99px;font-size:12px;font-weight:700;color:var(--cyan)">
+        STATUS: STANDBY READY
+      </div>
+    </div>
+
+    <!-- Screen 3: Active Gameplay (Role Specific) -->
+    <div id="gameplayScreen" class="hide" style="display:flex;flex-direction:column;gap:14px">
+      <div id="roleContainer">
+        <!-- Dynamically injected Navigator / Observer / Controller content -->
+      </div>
+
+      <!-- Live Comms Drawer -->
+      <div class="m-card" style="padding:12px">
+        <div class="m-card-title">TEAM COMMS</div>
+        <div id="commsFeed" style="max-height:100px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+        <form id="chatForm" style="display:flex;gap:6px">
+          <input id="chatInput" class="m-input" placeholder="Type tactical message..." maxlength="100" style="padding:8px 12px;font-size:13px">
+          <button type="submit" style="padding:8px 14px;font-size:13px;background:var(--cyan);color:#030a14;border:none;border-radius:8px;font-weight:800">
+            SEND
+          </button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/mobile.js"></script>
+</body>
+</html>

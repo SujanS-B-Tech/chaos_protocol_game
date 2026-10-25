@@ -3,6 +3,17 @@
   "version": "1.0.0",
   "description": "A cooperative multiplayer browser puzzle game for school and college expos",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "express": "^4.21.2", "socket.io": "^4.8.1" }
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/multiplayer_test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
+  }
 }

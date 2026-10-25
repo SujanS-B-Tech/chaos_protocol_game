@@ -1,110 +1,209 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CHAOS PROTOCOL</title>
-<style>
-:root{--bg:#080b16;--panel:#11182b;--line:#263454;--text:#edf4ff;--muted:#9baac8;--cyan:#63d7ff;--pink:#ff76b8;--green:#80f0b1;--gold:#ffca68}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#172344 0,#080b16 56%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,Segoe UI,sans-serif;min-height:100vh}button,input{font:inherit}button{border:0;border-radius:12px;padding:12px 16px;background:var(--cyan);color:#07111d;font-weight:800;cursor:pointer;transition:.15s}button:hover{filter:brightness(1.08);transform:translateY(-1px)}button:disabled{opacity:.4;cursor:not-allowed;transform:none}.secondary{background:#222d49;color:var(--text);border:1px solid #344567}.danger{background:#ff7196;color:#210811}.wrap{max-width:1180px;margin:auto;padding:22px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:18px}.brand{font-size:clamp(22px,4vw,34px);font-weight:950;letter-spacing:.09em}.brand span{color:var(--cyan)}.tag{font-size:11px;letter-spacing:.2em;color:var(--muted);margin-top:4px}.pill{border:1px solid #344567;border-radius:99px;padding:7px 11px;color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:1.3fr .7fr;gap:18px;margin-top:20px}.panel{background:linear-gradient(145deg,rgba(20,29,52,.96),rgba(12,17,32,.96));border:1px solid var(--line);border-radius:20px;padding:18px;min-width:0}.panel h2{font-size:16px;letter-spacing:.08em;margin:0 0 14px}.muted{color:var(--muted)}.lobby{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{width:100%;background:#080e1d;border:1px solid #344567;color:var(--text);padding:13px;border-radius:11px;outline:none}.field:focus{border-color:var(--cyan)}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}.roomcode{font-size:34px;letter-spacing:.2em;font-weight:900;color:var(--cyan)}.players{display:grid;gap:9px}.player{display:flex;align-items:center;gap:10px;background:#0b1224;border:1px solid #253454;padding:10px;border-radius:12px}.avatar{display:grid;place-items:center;width:38px;height:38px;background:#1c2944;border-radius:10px;font-size:20px}.player small{display:block;color:var(--muted);margin-top:3px}.map{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:4px;max-width:500px;margin:10px auto}.tile{aspect-ratio:1;border-radius:5px;background:#182541;display:grid;place-items:center;font-size:clamp(10px,2vw,19px);border:1px solid #28395a}.wall{background:#070c19;border-color:#111a2c}.floor{background:#1a2d49}.start{background:#164b56}.exit{background:#5a2451}.you{background:#007c95;box-shadow:0 0 15px #37dfff;border-color:#b4f4ff}.node{background:#3b2b63;border-color:#9c79ff}.done{background:#164b39;border-color:#6ce7ac}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{padding:12px;background:#0a1122;border:1px solid #263454;border-radius:12px}.stat strong{display:block;font-size:22px;margin-top:3px}.nodes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.nodebtn{background:#201c39;color:#e5d9ff;border:1px solid #59478a}.nodebtn.on{background:#174b3b;border-color:#57c99b;color:#d9ffed}.feed{display:flex;flex-direction:column;gap:7px;max-height:220px;overflow:auto}.event{padding:9px 11px;border-radius:9px;background:#0b1223;color:#b7c5df;font-size:13px;border-left:3px solid #4c628b}.event.good{border-color:var(--green)}.event.bad{border-color:var(--pink)}.event.chat{border-color:var(--cyan)}.hide{display:none!important}.rolecard{border:1px solid #344567;background:#0a1122;padding:14px;border-radius:14px}.roleicon{font-size:30px}.role-title{font-size:19px;font-weight:900;margin:5px 0}.clue{padding:12px;border-radius:12px;background:#1b2440;border:1px dashed #536b9b;line-height:1.5}.mobile-controls{display:grid;grid-template-columns:repeat(3,58px);gap:7px;justify-content:center;margin:12px auto}.mobile-controls button{padding:12px 0;font-size:20px}.mobile-controls .blank{visibility:hidden}.notice{position:sticky;top:8px;padding:10px 14px;border-radius:10px;background:#4b2436;border:1px solid #ad5479;margin:12px 0}.foot{text-align:center;color:#7181a2;font-size:12px;padding:20px}.section-gap{margin-top:15px}@media(max-width:780px){.wrap{padding:13px}.grid{grid-template-columns:1fr}.lobby{grid-template-columns:1fr}.brand{font-size:24px}.panel{padding:14px}.map{gap:3px}.tile{border-radius:3px}.roomcode{font-size:28px}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CHAOS PROTOCOL — One Game, Different Realities</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/vendor/three/build/three.module.js"
+    }
+  }
+  </script>
 </head>
-<body><div class="wrap">
-<header class="top"><div><div class="brand">CHAOS <span>PROTOCOL</span></div><div class="tag">MULTI-REALITY CO-OP // EXPO EDITION</div></div><div class="row" style="flex:0"><span class="pill">2–8 PLAYERS</span><span class="pill">MISSION 01</span></div></header>
-<div id="notice" class="notice hide" role="status"></div>
-<section id="lobbyScreen" class="grid">
-  <div class="panel"><h2>INITIALIZE A MISSION</h2><p class="muted">Create a room on the laptop, then teammates join from their phones using the room code.</p>
-    <label class="muted" for="hostName">Your callsign</label><input id="hostName" class="field" maxlength="18" value="Commander" placeholder="Your name">
-    <button id="createBtn" style="width:100%;margin-top:10px">＋ CREATE NEW ROOM</button>
-    <div style="height:1px;background:var(--line);margin:20px 0"></div>
-    <h2>JOIN A TEAM</h2><div class="lobby"><input id="joinCode" class="field" maxlength="4" placeholder="ROOM CODE"><input id="playerName" class="field" maxlength="18" placeholder="Your callsign"></div>
-    <button id="joinBtn" class="secondary" style="width:100%;margin-top:10px">JOIN MISSION</button>
-    <p class="muted" style="font-size:12px;margin-top:16px">All devices must be on the same Wi-Fi if you're running the server locally.</p>
-  </div>
-  <div class="panel"><h2>MISSION BRIEFING</h2><div class="rolecard"><div class="roleicon">🌀</div><div class="role-title">Reality is collapsing.</div><p class="muted">A maze has trapped your team in a broken dimension. Share private clues, activate the power nodes in the right order, and guide the Explorer to the exit before the 3-minute timer ends.</p></div>
-    <div class="section-gap stats"><div class="stat"><span class="muted">TEAM SIZE</span><strong>2–8</strong></div><div class="stat"><span class="muted">TIME LIMIT</span><strong>03:00</strong></div><div class="stat"><span class="muted">MISSION</span><strong>01</strong></div></div>
-  </div>
-</section>
-<section id="gameScreen" class="hide">
-  <div class="panel" style="margin-top:20px"><div class="row" style="align-items:center"><div style="flex:2"><div class="tag">YOUR ROOM</div><div id="roomCode" class="roomcode">----</div><div class="muted">Scan no QR needed: open this same site on phones and enter the code.</div></div><div class="stat"><span class="muted">TIME LEFT</span><strong id="timer">03:00</strong></div><div class="stat"><span class="muted">POWER NODES</span><strong id="nodeCount">0 / 3</strong></div></div></div>
-  <div class="grid">
-    <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:2">LIVE DIMENSION MAP</h2><span id="statusPill" class="pill">LOBBY</span></div><div id="map" class="map" aria-label="Maze map"></div><p class="muted" style="text-align:center;font-size:12px">The Explorer's cyan marker moves in real time. Find the exit after powering all nodes.</p>
-      <div id="hostControls" class="row section-gap"><button id="startBtn">▶ START MISSION</button><button id="resetBtn" class="secondary">↻ RESET</button></div>
-      <div class="section-gap"><h2>POWER NODES</h2><div class="nodes"><button class="nodebtn" data-node="0">🔵 BLUE<br><small>Node 1</small></button><button class="nodebtn" data-node="1">🟠 AMBER<br><small>Node 2</small></button><button class="nodebtn" data-node="2">🟣 VIOLET<br><small>Node 3</small></button></div><p class="muted" style="font-size:12px">Correct activation order: VIOLET → BLUE → AMBER. The Analyst's clue confirms it.</p></div>
+<body>
+  <div id="app-container">
+    <!-- 3D WebGL Canvas Layer -->
+    <div id="canvas3d"></div>
+
+    <!-- Alert Screen Banner -->
+    <div id="screenAlert" class="screen-alert hide"></div>
+
+    <!-- On-Screen Controls Hint for 3D Play -->
+    <div id="controlsHint" class="controls-hint hide">
+      🎮 CONTROLS: [W][A][S][D] / Arrows: Move | [E] / Space: Activate Node | [C]: Camera Mode | [M]: Audio
     </div>
-    <div class="panel"><h2>YOUR ROLE & SECRET INTEL</h2><div id="roleCard" class="rolecard"><div class="muted">Connect to receive your role…</div></div>
-      <div id="moveControls" class="hide"><h2 class="section-gap">EXPLORER CONTROLS</h2><div class="mobile-controls"><span class="blank">.</span><button class="secondary" data-move="0,-1">↑</button><span class="blank">.</span><button class="secondary" data-move="-1,0">←</button><button class="secondary" data-move="0,1">↓</button><button class="secondary" data-move="1,0">→</button></div><p class="muted" style="text-align:center;font-size:12px">Navigator or Explorer role can move the player.</p></div>
-      <div class="section-gap"><h2>TEAM COMMS</h2><div id="feed" class="feed" aria-live="polite"></div><form id="chatForm" class="row section-gap"><input id="chatInput" class="field" maxlength="100" placeholder="Share a clue…"><button type="submit">SEND</button></form></div>
-      <div class="section-gap"><h2>TEAM ROSTER</h2><div id="players" class="players"></div></div>
+
+    <!-- Spectator Expo Badge -->
+    <div class="spectator-callout">
+      SPECTATOR DISPLAY // MOBILE PLAYERS CONNECT VIA QR CODE
+    </div>
+
+    <!-- Gameplay HUD Overlay -->
+    <div class="hud-layer">
+      <!-- Top Header -->
+      <header class="hud-header interactive">
+        <div class="brand-box">
+          <div class="brand-title">
+            CHAOS <span>PROTOCOL</span>
+          </div>
+          <div class="brand-subtitle" id="levelNameDisplay">MISSION 01: THE FRACTURED GATE</div>
+        </div>
+
+        <div class="hud-telemetry">
+          <div class="stat-metric">
+            <label>ROOM CODE</label>
+            <div class="val" id="roomCodeHeader">----</div>
+          </div>
+          <div style="width:1px;height:32px;background:var(--border-line)"></div>
+          <div class="stat-metric">
+            <label>COUNTDOWN</label>
+            <div class="val" id="timerVal">03:00</div>
+          </div>
+          <div style="width:1px;height:32px;background:var(--border-line)"></div>
+          <div class="stat-metric">
+            <label>DIMENSION STABILITY</label>
+            <div class="val" id="stabilityVal" style="color:var(--green)">100%</div>
+            <div class="stability-bar-wrap">
+              <div class="stability-bar-fill" id="stabilityBar"></div>
+            </div>
+          </div>
+          <div style="width:1px;height:32px;background:var(--border-line)"></div>
+          <div class="stat-metric">
+            <label>QUANTUM NODES</label>
+            <div class="val" id="nodeStatusVal">0 / 3</div>
+          </div>
+        </div>
+
+        <div class="hud-controls">
+          <button id="camModeBtn" class="control-btn secondary">CAM: TACTICAL</button>
+          <button id="muteBtn" class="control-btn secondary">MUTE AUDIO</button>
+          <button id="resetBtn" class="control-btn secondary">↻ RESET</button>
+        </div>
+      </header>
+
+      <!-- Bottom HUD: Objectives & Comms -->
+      <div class="hud-bottom interactive">
+        <div class="objective-card">
+          <div class="card-heading">
+            <span>MISSION OBJECTIVES</span>
+            <span class="pill active">ACTIVE</span>
+          </div>
+          <div class="objective-item" id="objBridge">
+            <div class="objective-check">✓</div>
+            <span>Deploy Energy Bridge across the void</span>
+          </div>
+          <div class="objective-item" id="objNodes">
+            <div class="objective-check">✓</div>
+            <span>Synchronize 3 Quantum Power Nodes in sequence</span>
+          </div>
+          <div class="objective-item" id="objGate">
+            <div class="objective-check">✓</div>
+            <span>Unseal Titan Blast Door to Exit Sector</span>
+          </div>
+          <div class="objective-item" id="objEscape">
+            <div class="objective-check">✓</div>
+            <span>Navigate Avatar safely into Quantum Exit Portal</span>
+          </div>
+        </div>
+
+        <div class="comms-feed">
+          <div class="card-heading">
+            <span>TEAM COMMS & TELEMETRY</span>
+            <span class="pill good">LIVE FEED</span>
+          </div>
+          <div class="comms-list" id="commsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lobby Modal Overlay -->
+    <div id="lobbyOverlay" class="overlay-screen">
+      <div class="modal-content interactive">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-line);padding-bottom:16px">
+          <div>
+            <div class="brand-title" style="font-size:26px">
+              CHAOS <span>PROTOCOL</span>
+            </div>
+            <div class="brand-subtitle">ONE GAME, DIFFERENT REALITIES // CO-OP INSTALLATION</div>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);margin-right:8px">MISSION:</label>
+            <select id="missionSelect" class="pill" style="background:#0b1424;color:#fff;border-color:var(--border-line);font-size:13px;padding:6px 12px">
+              <option value="1">Mission 1: The Fractured Gate</option>
+              <option value="2">Mission 2: Neon Labyrinth</option>
+              <option value="3">Mission 3: Void Core</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="lobby-grid">
+          <!-- QR Code & Room Code -->
+          <div class="qr-card">
+            <span class="pill active">SCAN TO JOIN FROM SMARTPHONE</span>
+            <img id="qrImage" class="qr-image" alt="Scan QR code to join" src="">
+            <div style="font-size:12px;letter-spacing:0.15em;color:var(--text-muted)">OR ENTER ROOM CODE</div>
+            <div class="room-code-tag" id="roomCodeDisplay">----</div>
+            <div class="join-link-box" id="joinUrlDisplay">http://.../join</div>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:14px;line-height:1.4">
+              Phones and laptop must be on the same local network, or use your public deployment URL.
+            </p>
+          </div>
+
+          <!-- Role Slots & Launch Button -->
+          <div style="display:flex;flex-direction:column;justify-content:space-between">
+            <div>
+              <div class="card-heading" style="margin-bottom:14px">
+                <span>TEAM ROSTER (3 UNIQUE ROLES REQUIRED)</span>
+              </div>
+              <div class="role-slots-container" id="roleSlots">
+                <!-- Dynamically populated role cards -->
+              </div>
+            </div>
+
+            <div>
+              <div class="test-mode-panel">
+                <div>
+                  <div style="font-size:13px;font-weight:700">KEYBOARD / SOLO MODE</div>
+                  <div style="font-size:11px;color:var(--text-muted)">Play directly on laptop with WASD / Arrow keys & E to activate</div>
+                </div>
+                <button type="button" id="soloPlayBtn" style="padding:8px 16px;font-size:13px;background:var(--cyan);color:#030a14;font-weight:800">
+                  ▶ PLAY 3D LEVEL NOW
+                </button>
+              </div>
+
+              <!-- Quick node test triggers -->
+              <div id="testControls" style="margin-top:10px;display:flex;gap:8px">
+                <button type="button" class="secondary" style="flex:1;font-size:11px;padding:8px" data-test-node="2">NODE 3 (VIOLET)</button>
+                <button type="button" class="secondary" style="flex:1;font-size:11px;padding:8px" data-test-node="0">NODE 1 (CYAN)</button>
+                <button type="button" class="secondary" style="flex:1;font-size:11px;padding:8px" data-test-node="1">NODE 2 (AMBER)</button>
+              </div>
+
+              <button id="startBtn" style="width:100%;margin-top:14px;padding:15px;font-size:16px" disabled>
+                ▶ START MULTIPLAYER MISSION
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Modal Overlay -->
+    <div id="resultsOverlay" class="overlay-screen hide">
+      <div class="modal-content interactive" style="max-width:540px;text-align:center">
+        <h2 id="resultTitle" style="font-family:var(--font-display);font-size:26px;margin-bottom:14px">
+          DIMENSION ESCAPED
+        </h2>
+        <div id="resultScore" style="font-family:var(--font-display);font-size:32px;color:var(--cyan);margin-bottom:8px">
+          SCORE: 2850
+        </div>
+        <div id="resultTime" style="font-size:15px;color:var(--text-muted);margin-bottom:4px">
+          TIME REMAINING: 01:24
+        </div>
+        <div id="resultStability" style="font-size:15px;color:var(--green);margin-bottom:24px">
+          DIMENSION STABILITY: 85%
+        </div>
+        <button id="resultBtn" style="width:100%;padding:14px;font-size:16px">
+          ↻ PLAY AGAIN / RETURN TO LOBBY
+        </button>
+      </div>
     </div>
   </div>
-</section>
-<div class="foot">CHAOS PROTOCOL // A cooperative puzzle game built for browser-based play.</div>
-</div>
-<script src="/socket.io/socket.io.js"></script><script>
-(() => {
-const socket=io();
-const $=id=>document.getElementById(id);
-let roomCode=null, isHost=false, myRole=null, lastState=null;
-const roleMeta={
- navigator:["🧭","Navigator","#63d7ff","You can see the exit route. Guide the team and help move the Explorer."],
- observer:["👁️","Observer","#ffca68","You can detect hidden hazards. Warn the Explorer before dangerous moves."],
- controller:["⚡","Controller","#c4a0ff","You operate the power nodes. Coordinate with the Analyst for the correct order."],
- explorer:["🧑‍🚀","Explorer","#80f0b1","You move through the maze. Listen to the team and reach the exit."],
- analyst:["🧩","Analyst","#ff91bb","You have a secret code clue. Share it with the Controller."]
-};
-function notice(text,type="error"){const n=$("notice");n.textContent=text;n.classList.remove("hide");n.style.background=type==="good"?"#123b32":"#4b2436";clearTimeout(notice._t);notice._t=setTimeout(()=>n.classList.add("hide"),5000)}
-function enter(data){roomCode=data.code;isHost=data.host;$("lobbyScreen").classList.add("hide");$("gameScreen").classList.remove("hide");$("roomCode").textContent=roomCode;$("hostControls").classList.toggle("hide",!isHost);notice(isHost?"Room created. Ask teammates to join with this code.":"Connected to mission.","good")}
-$("createBtn").onclick=()=>socket.emit("room:create",{name:$("hostName").value.trim()||"Commander"});
-$("joinBtn").onclick=()=>socket.emit("room:join",{code:$("joinCode").value,name:$("playerName").value.trim()||"Player"});
-$("joinCode").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,4));
-$("startBtn").onclick=()=>socket.emit("game:start");
-$("resetBtn").onclick=()=>socket.emit("game:reset");
-document.querySelectorAll("[data-node]").forEach(b=>b.onclick=()=>socket.emit("node:activate",{node:Number(b.dataset.node)}));
-document.querySelectorAll("[data-move]").forEach(b=>b.onclick=()=>{const [dx,dy]=b.dataset.move.split(",").map(Number);socket.emit("player:move",{dx,dy})});
-$("chatForm").onsubmit=e=>{e.preventDefault();const t=$("chatInput").value.trim();if(t){socket.emit("chat:send",{text:t});$("chatInput").value=""}};
-socket.on("room:joined",enter);
-socket.on("notice",n=>notice(n.text,n.type));
-socket.on("player:private",data=>{
- myRole=data.role;
- const meta=roleMeta[data.role]||["🌀","Player","#fff","Team member"];
- let clue=data.route||data.hazard||data.nodeClue||data.codeClue||data.moveHint||"Work with your teammates to complete the mission.";
- $("roleCard").innerHTML=`<div class="roleicon">${meta[0]}</div><div class="role-title" style="color:${meta[2]}">${meta[1]}</div><p class="muted">${meta[3]}</p><div class="clue"><b>🔐 PRIVATE INTEL</b><br>${escapeHtml(clue)}</div>`;
- $("moveControls").classList.toggle("hide",!["explorer","navigator"].includes(myRole));
-});
-socket.on("room:update",state=>{
- lastState=state;
- $("roomCode").textContent=state.code;
- $("statusPill").textContent=state.status.toUpperCase();
- $("timer").textContent=String(Math.floor(state.timeLeft/60)).padStart(2,"0")+":"+String(state.timeLeft%60).padStart(2,"0");
- $("nodeCount").textContent=state.nodes.filter(Boolean).length+" / 3";
- drawMap(state);
- $("players").innerHTML=state.players.map(p=>{const m=roleMeta[p.role]||["🌀","Player","#fff",""];return `<div class="player"><div class="avatar">${m[0]}</div><div><b>${escapeHtml(p.name)}</b><small style="color:${m[2]}">${m[1]}${p.id===socket.id?" · YOU":""}</small></div></div>`}).join("");
- $("feed").innerHTML=state.messages.map(m=>`<div class="event ${m.kind}">${escapeHtml(m.text)}</div>`).join("");
- $("feed").scrollTop=$("feed").scrollHeight;
- document.querySelectorAll("[data-node]").forEach(b=>{const i=Number(b.dataset.node);b.classList.toggle("on",state.nodes[i]);b.disabled=state.status!=="playing"||state.nodes[i]});
- $("startBtn").disabled=state.status==="playing"||state.players.length<2;
- if(state.status==="won")notice("MISSION COMPLETE — REALITY RESTORED! 🎉","good");
- if(state.status==="failed")notice("MISSION FAILED — reset and try again.","error");
-});
-function drawMap(s){
- const map=[
- "###########","#S.#...#..#","#..#.#.#.##","#.##.#....#","#....###.##","###...#...#","#...##.##.#","#.#.......#","#.###.###.#","#.......E.#","###########"
- ];
- const nodesAt={"4,1":0,"8,3":1,"5,7":2};
- $("map").innerHTML="";
- map.forEach((line,y)=>[...line].forEach((ch,x)=>{
-  const el=document.createElement("div");el.className="tile";
-  if(ch==="#")el.classList.add("wall");
-  else if(ch==="S")el.classList.add("start");
-  else if(ch==="E")el.classList.add("exit");
-  else el.classList.add("floor");
-  if(nodesAt[`${x},${y}`]!==undefined){const i=nodesAt[`${x},${y}`];el.classList.add(s.nodes[i]?"done":"node");el.textContent=s.nodes[i]?"✓":["🔵","🟠","🟣"][i]}
-  if(s.position.x===x&&s.position.y===y){el.classList.add("you");el.textContent="🚀"}
-  else if(!el.textContent&&ch==="S")el.textContent="S";
-  else if(!el.textContent&&ch==="E")el.textContent="EXIT";
-  $("map").appendChild(el);
- }));
-}
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-})();
-</script></body></html>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/audio.js"></script>
+  <script type="module" src="/js/host.js"></script>
+</body>
+</html>
