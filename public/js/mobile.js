@@ -44,6 +44,9 @@
       this.isPeer = false;
       this.connected = false;
       this.pendingQueue = [];
+      this.session = null;
+      this.reconnectTimer = null;
+      this.reconnectUntil = 0; // { code, playerToken, name, role } for auto-rejoin
     }
 
     on(event, fn) {
@@ -100,7 +103,11 @@
               el.headerRoleBadge.textContent = "ONLINE (LIVE)";
               el.headerRoleBadge.style.color = "var(--green)";
             }
-            this.flushQueue();
+            // Rejoin the room with the saved session token (Wi-Fi drop, screen lock, reload)
+            if (this.session && this.session.code && this.session.playerToken) {
+              this.socket.emit('room:rejoin', { code: this.session.code, playerToken: this.session.playerToken });
+            }
+            if (!this.session) this.flushQueue();
           });
 
           this.socket.on('connect_error', () => {
@@ -108,7 +115,7 @@
             this.connectPeer(targetRoomCode);
           });
 
-          ['room:joined', 'room:update', 'notice', 'game:sound', 'game:event'].forEach(evt => {
+          ['room:joined', 'room:update', 'notice', 'game:sound', 'game:event', 'session:expired'].forEach(evt => {
             this.socket.on(evt, data => this.trigger(evt, data));
           });
           return;
@@ -150,6 +157,7 @@
 
           this.peer.on('error', err => {
             console.warn("[Mobile] Peer client error:", err);
+            this.schedulePeerReconnect(hostPeerId);
           });
         } else if (this.peer.open) {
           this.openDataChannel(hostPeerId);
@@ -164,16 +172,21 @@
         try { this.peerConn.close(); } catch (_) {}
       }
 
-      this.peerConn = this.peer.connect(hostPeerId, { reliable: true });
+      const conn = this.peer.connect(hostPeerId, { reliable: true });
+      this.peerConn = conn;
 
-      this.peerConn.on('open', () => {
+      conn.on('open', () => {
+        if (this.peerConn !== conn) return;
+        clearTimeout(this.reconnectTimer);
+        this.reconnectUntil = 0;
         console.log("[Mobile] WebRTC DataChannel connected to Host!");
         this.connected = true;
         if (el.headerRoleBadge) {
           el.headerRoleBadge.textContent = "CONNECTED (P2P 4G)";
           el.headerRoleBadge.style.color = "var(--green)";
         }
-        this.flushQueue();
+        if (this.session) conn.send({ type: 'room:rejoin', code: this.session.code, playerToken: this.session.playerToken });
+        if (!this.session) this.flushQueue();
       });
 
       this.peerConn.on('data', data => {
@@ -182,6 +195,8 @@
             this.trigger('room:update', data.state);
           } else if (data.type === 'room:joined') {
             this.trigger('room:joined', data);
+          } else if (data.type === 'session:expired') {
+            this.trigger('session:expired', data);
           } else if (data.type === 'notice') {
             this.trigger('notice', data);
           } else if (data.type === 'game:sound') {
@@ -194,12 +209,34 @@
 
       this.peerConn.on('close', () => {
         console.warn("[Mobile] DataChannel closed");
+        if (this.peerConn !== conn) return;
         this.connected = false;
+        this.schedulePeerReconnect(hostPeerId);
       });
 
       this.peerConn.on('error', err => {
         console.warn("[Mobile] DataChannel error:", err);
+        if (this.peerConn === conn) { this.connected = false; this.schedulePeerReconnect(hostPeerId); }
       });
+      setTimeout(() => {
+        if (this.peerConn === conn && !conn.open) this.schedulePeerReconnect(hostPeerId);
+      }, 6000);
+    }
+
+    schedulePeerReconnect(hostPeerId) {
+      if (!this.session || this.reconnectTimer) return;
+      if (!this.reconnectUntil) this.reconnectUntil = Date.now() + 2 * 60 * 1000;
+      if (Date.now() > this.reconnectUntil) {
+        this.trigger('session:expired', {});
+        return;
+      }
+      if (el.headerRoleBadge) el.headerRoleBadge.textContent = 'RECONNECTING...';
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (this.peer && this.peer.disconnected) this.peer.reconnect();
+        if (this.peer && this.peer.open) this.openDataChannel(hostPeerId);
+        else this.schedulePeerReconnect(hostPeerId);
+      }, 2500);
     }
 
     flushQueue() {
@@ -211,6 +248,16 @@
   }
 
   const socket = new NetworkClient();
+
+  // Restore a saved player session so a reconnect or page reload rejoins
+  // the same room with the same role instead of starting over.
+  try {
+    const savedSession = JSON.parse(localStorage.getItem('chaos_player_session') || 'null');
+    const urlRoom = (urlParams.get('room') || '').toUpperCase().trim();
+    if (savedSession && savedSession.code && savedSession.playerToken && (!urlRoom || urlRoom === savedSession.code)) {
+      socket.session = savedSession;
+    }
+  } catch (_) {}
 
   let roomCode = null;
   let myRole = null;
@@ -285,6 +332,13 @@
     roomCode = data.code;
     myRole = data.role;
     myPlayerId = data.playerId;
+    if (data.rejoined) socket.pendingQueue = [];
+
+    // Persist the session so this device can rejoin automatically
+    if (data.playerToken) {
+      socket.session = { code: data.code, playerToken: data.playerToken, name: data.name, role: data.role };
+      try { localStorage.setItem('chaos_player_session', JSON.stringify(socket.session)); } catch (_) {}
+    }
 
     el.joinScreen.classList.add('hide');
     el.lobbyWaitScreen.classList.remove('hide');
@@ -300,6 +354,19 @@
     alert(data.text);
   });
 
+  // Server no longer knows this session (room ended / server restarted):
+  // drop the saved token and fall back to the manual join screen.
+  socket.on('session:expired', () => {
+    socket.session = null;
+    socket.pendingQueue = [];
+    clearTimeout(socket.reconnectTimer);
+    socket.reconnectTimer = null;
+    try { localStorage.removeItem('chaos_player_session'); } catch (_) {}
+    el.joinScreen.classList.remove('hide');
+    el.lobbyWaitScreen.classList.add('hide');
+    el.gameplayScreen.classList.add('hide');
+  });
+
   // Server state updates
   socket.on('room:update', state => {
     lastState = state;
@@ -307,7 +374,7 @@
     if (state.status === 'lobby') {
       el.lobbyWaitScreen.classList.remove('hide');
       el.gameplayScreen.classList.add('hide');
-    } else if (state.status === 'intro' || state.status === 'playing') {
+    } else if (['intro', 'playing', 'paused', 'won', 'failed'].includes(state.status)) {
       el.lobbyWaitScreen.classList.add('hide');
       el.gameplayScreen.classList.remove('hide');
     }
