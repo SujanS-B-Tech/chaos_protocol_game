@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 const { Server } = require("socket.io");
 const QRCode = require("qrcode");
 const tunnelManager = require("./tunnel");
@@ -155,7 +156,8 @@ app.post("/api/tunnel/start", async (_req, res) => {
           joinUrl,
           baseUrl: status.url,
           levelId: room.levelId,
-          mission: room.mission
+          mission: room.mission,
+          hostToken: room.hostToken
         });
         addMessage(room, `🌐 Online 4G tunnel active: ${status.url}`, "good");
         broadcastRoom(room);
@@ -179,7 +181,8 @@ app.post("/api/tunnel/stop", async (_req, res) => {
         joinUrl,
         baseUrl: SERVER_BASE_URL,
         levelId: room.levelId,
-        mission: room.mission
+        mission: room.mission,
+        hostToken: room.hostToken
       });
       addMessage(room, `Switched back to Local IP: ${SERVER_BASE_URL}`, "info");
       broadcastRoom(room);
@@ -434,6 +437,7 @@ function createRoom(code, levelId = 1) {
     status: "lobby", // lobby | intro | playing | won | failed | paused
     players: {},
     hostSocketId: null,
+    hostToken: crypto.randomBytes(16).toString("hex"),
     position: { ...missionDef.start },
     avatarFacing: "south",
     stability: 100, // 0 - 100%
@@ -640,7 +644,14 @@ function startGame(room) {
     room.startTime = Date.now();
     addMessage(room, "DIMENSIONAL STABILIZERS ENGAGED. Communicate and advance!", "good");
 
-    if (room.interval) clearInterval(room.interval);
+    resumeGameTimer(room);
+
+    broadcastRoom(room);
+  }, 2500);
+}
+
+function resumeGameTimer(room) {
+    if (room.interval || room.status !== "playing") return;
     room.interval = setInterval(() => {
       if (room.status !== "playing") return;
 
@@ -653,15 +664,13 @@ function startGame(room) {
         room.timeLeft = 0;
         room.status = "failed";
         addMessage(room, "DIMENSIONAL COLLAPSE: Mission time expired. Team lost to the void.", "bad");
-        if (room.interval) clearInterval(room.interval);
+        if (room.interval || room.status !== "playing") return;
         room.interval = null;
       }
 
       broadcastRoom(room);
     }, 1000);
 
-    broadcastRoom(room);
-  }, 2500);
 }
 
 function updateMovingPlatforms(room) {
@@ -709,7 +718,8 @@ io.on("connection", socket => {
       joinUrl,
       baseUrl,
       levelId: room.levelId,
-      mission: room.mission
+      mission: room.mission,
+      hostToken: room.hostToken
     });
 
     addMessage(room, `Lobby opened by Host (${hostName || "Mission Control"}). Base URL: ${baseUrl}`, "info");
@@ -720,7 +730,7 @@ io.on("connection", socket => {
   socket.on("room:setPublicUrl", ({ url } = {}) => {
     const code = socket.data.room;
     const room = rooms.get(code);
-    if (!room || !socket.data.isHost) return;
+    if (!room || socket.id !== room.hostSocketId) return;
 
     const baseUrl = resolveBaseUrl(socket, null, url);
     room.baseUrl = baseUrl;
@@ -731,7 +741,8 @@ io.on("connection", socket => {
       joinUrl,
       baseUrl,
       levelId: room.levelId,
-      mission: room.mission
+      mission: room.mission,
+      hostToken: room.hostToken
     });
 
     addMessage(room, `Public join address updated: ${baseUrl}`, "good");
@@ -767,7 +778,8 @@ io.on("connection", socket => {
       name: cleanName,
       role,
       ready: true,
-      connected: true
+      connected: true,
+      playerToken: crypto.randomBytes(16).toString("hex")
     };
 
     socket.data.room = code;
@@ -779,10 +791,81 @@ io.on("connection", socket => {
       playerId: socket.id,
       name: cleanName,
       role,
-      roleInfo: ROLE_INFO[role]
+      roleInfo: ROLE_INFO[role],
+      playerToken: room.players[socket.id].playerToken
     });
 
     addMessage(room, `${cleanName} joined as ${ROLE_INFO[role].name}.`, "good");
+    broadcastRoom(room);
+  });
+
+  // Player rejoins with a saved session token (Wi-Fi drop, screen lock, page reload)
+  socket.on("room:rejoin", ({ code, playerToken } = {}) => {
+    code = String(code || "").trim().toUpperCase();
+    const room = rooms.get(code);
+
+    if (!room || !playerToken) {
+      return socket.emit("session:expired", { text: "Session not found. Please join the room again." });
+    }
+
+    const entry = Object.entries(room.players).find(([, p]) => p.playerToken && p.playerToken === playerToken);
+    if (!entry) {
+      return socket.emit("session:expired", { text: "Session not found. Please join the room again." });
+    }
+
+    const [oldSocketId, player] = entry;
+    if (oldSocketId !== socket.id) {
+      delete room.players[oldSocketId];
+      player.id = socket.id;
+      room.players[socket.id] = player;
+    }
+    player.connected = true;
+    resumeGameTimer(room);
+
+    socket.data.room = code;
+    socket.data.isHost = false;
+    socket.join(code);
+
+    socket.emit("room:joined", {
+      code,
+      playerId: socket.id,
+      name: player.name,
+      role: player.role,
+      roleInfo: ROLE_INFO[player.role],
+      playerToken: player.playerToken,
+      rejoined: true
+    });
+
+    addMessage(room, `${player.name} reconnected as ${ROLE_INFO[player.role].name}.`, "good");
+    broadcastRoom(room);
+  });
+
+  // Host reattaches to its existing room after a reconnect (instead of creating a new room)
+  socket.on("room:rehost", ({ code, hostToken } = {}) => {
+    code = String(code || "").trim().toUpperCase();
+    const room = rooms.get(code);
+
+    if (!room || !hostToken || room.hostToken !== hostToken) {
+      return socket.emit("room:rehostFailed");
+    }
+
+    room.hostSocketId = socket.id;
+    resumeGameTimer(room);
+    socket.data.room = code;
+    socket.data.isHost = true;
+    socket.join(code);
+
+    socket.emit("room:created", {
+      code,
+      joinUrl: `${room.baseUrl}/join?room=${code}`,
+      baseUrl: room.baseUrl,
+      levelId: room.levelId,
+      mission: room.mission,
+      hostToken: room.hostToken,
+      rehosted: true
+    });
+
+    addMessage(room, "Host screen reconnected.", "info");
     broadcastRoom(room);
   });
 
@@ -808,10 +891,17 @@ io.on("connection", socket => {
     broadcastRoom(room);
   });
 
+  // Host-only guard for mission control events
+  function requireHost(room) {
+    if (room && socket.id === room.hostSocketId) return true;
+    socket.emit("notice", { type: "error", text: "Only the host can control the mission." });
+    return false;
+  }
+
   // Host starts game
   socket.on("game:start", () => {
     const room = rooms.get(socket.data.room);
-    if (!room) return;
+    if (!room || !requireHost(room)) return;
 
     // Allow start if at least 1 player connected or in solo/test mode
     startGame(room);
@@ -820,7 +910,7 @@ io.on("connection", socket => {
   // Host changes mission level
   socket.on("game:setLevel", ({ levelId } = {}) => {
     const room = rooms.get(socket.data.room);
-    if (!room || room.status === "playing") return;
+    if (!room || room.status === "playing" || !requireHost(room)) return;
 
     const id = Number(levelId);
     if (MISSIONS[id]) {
@@ -839,13 +929,14 @@ io.on("connection", socket => {
   // Pause / resume game
   socket.on("game:togglePause", () => {
     const room = rooms.get(socket.data.room);
-    if (!room) return;
+    if (!room || !requireHost(room)) return;
 
     if (room.status === "playing") {
       room.status = "paused";
       addMessage(room, "MISSION PAUSED.", "info");
     } else if (room.status === "paused") {
       room.status = "playing";
+      resumeGameTimer(room);
       addMessage(room, "MISSION RESUMED.", "good");
     }
     broadcastRoom(room);
@@ -854,7 +945,7 @@ io.on("connection", socket => {
   // Reset mission
   socket.on("game:reset", () => {
     const room = rooms.get(socket.data.room);
-    if (!room) return;
+    if (!room || !requireHost(room)) return;
 
     stopGameTimer(room);
     room.status = "lobby";
