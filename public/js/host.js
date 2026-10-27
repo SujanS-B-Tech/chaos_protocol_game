@@ -77,6 +77,36 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
     if (window.sound) window.sound.init();
   }, { once: true });
 
+  // Comprehensive WebRTC STUN + TURN config for reliable 4G/5G cross-network connections
+  const RTC_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      // PeerJS free TURN relays
+      {
+        urls: [
+          'turn:eu-0.turn.peerjs.com:3478',
+          'turn:us-0.turn.peerjs.com:3478'
+        ],
+        username: 'peerjs',
+        credential: 'peerjsp'
+      },
+      // OpenRelay community TURN relays (traverses symmetric cellular CGNAT)
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp'
+        ],
+        username: 'openrelay',
+        credential: 'openrelay'
+      }
+    ]
+  };
+
+
   // 2. SOCKET.IO MULTIPLAYER SETUP
   let socket = null;
   const urlParams = new URLSearchParams(window.location.search);
@@ -159,7 +189,9 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       console.warn("Failed to initialize Socket.IO client", e);
       setStandaloneMode(true);
     }
-   function setStandaloneMode(active) {
+  }
+
+  function setStandaloneMode(active) {
     isStandalone = active;
     if (active) {
       updateServerStatus(isVercelHost ? "● WEBRTC CLOUD P2P (VERCEL)" : "● LOCAL 3D MODE", "good");
@@ -169,35 +201,6 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       initPeerHost();
     }
   }
-
-  // Comprehensive WebRTC STUN + TURN config for reliable 4G/5G cross-network connections
-  const RTC_CONFIG = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' },
-      // PeerJS free TURN relays
-      {
-        urls: [
-          'turn:eu-0.turn.peerjs.com:3478',
-          'turn:us-0.turn.peerjs.com:3478'
-        ],
-        username: 'peerjs',
-        credential: 'peerjsp'
-      },
-      // OpenRelay community TURN relays (traverses symmetric cellular CGNAT)
-      {
-        urls: [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp'
-        ],
-        username: 'openrelay',
-        credential: 'openrelay'
-      }
-    ]
-  };
 
   // ----------------------------------------------------
   // WEBRTC PEER-TO-PEER HOST (FOR SERVERLESS VERCEL & CLOUD)
@@ -276,12 +279,16 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
     const { type } = data;
 
     if (type === 'room:join') {
+      if (String(data.code || '').trim().toUpperCase() !== roomCode) {
+        conn.send({ type: 'notice', text: 'Room code does not match this host.' });
+        return;
+      }
       const { name, requestedRole } = data;
-      const cleanName = (name || "Agent").trim().slice(0, 16) || "Agent";
+      const cleanName = String(name || "Agent").trim().slice(0, 16) || "Agent";
 
       let role = requestedRole;
       const validRoles = ["navigator", "observer", "controller"];
-      const activeRoles = Array.from(peerClients.values()).map(c => c.role);
+      const activeRoles = Array.from(peerClients.values()).filter(c => c.id !== conn.peer).map(c => c.role);
 
       if (!validRoles.includes(role) || activeRoles.includes(role)) {
         role = validRoles.find(r => !activeRoles.includes(r)) || "spectator";
@@ -315,18 +322,25 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       return;
     }
 
+    const client = peerClients.get(conn.peer);
+    if (!client) return;
+
     if (type === 'player:move') {
+      if (client.role !== 'navigator') return;
       const { dx, dz } = data;
-      if (typeof dx === 'number' && typeof dz === 'number') {
+      if (Number.isInteger(dx) && Number.isInteger(dz) && Math.abs(dx) + Math.abs(dz) === 1) {
         moveStandaloneAvatar(dx, dz);
       }
     } else if (type === 'node:activate') {
+      if (client.role !== 'controller') return;
       const { nodeId } = data;
       if (typeof nodeId === 'number') {
         activateStandaloneNode(nodeId);
       }
     } else if (type === 'observer:alert') {
-      const { text, kind } = data;
+      if (client.role !== 'observer') return;
+      const text = String(data.message || data.text || '').trim().slice(0, 120);
+      const kind = 'bad';
       if (window.sound) window.sound.play('hazard_alarm');
       showScreenAlert(`⚠️ OBSERVER ALERT: ${text}`, 3500);
       if (standaloneState) {
@@ -334,7 +348,8 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         applyState(standaloneState);
       }
     } else if (type === 'navigator:ping') {
-      const { text } = data;
+      if (client.role !== 'navigator') return;
+      const text = String(data.message || data.text || '').trim().slice(0, 120);
       if (window.sound) window.sound.play('bump');
       showScreenAlert(`🧭 NAVIGATOR: ${text}`, 2500);
       if (standaloneState) {
@@ -342,7 +357,8 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         applyState(standaloneState);
       }
     } else if (type === 'chat:send') {
-      const { text } = data;
+      const text = String(data.text || '').trim().slice(0, 120);
+      if (!text) return;
       const client = peerClients.get(conn.peer);
       const author = client ? client.name : "Agent";
       if (standaloneState) {
@@ -499,6 +515,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
   function initStandaloneGame() {
     const mission = MISSIONS[currentLevelId];
     standaloneState = {
+      players: [],
       code: roomCode,
       status: "lobby",
       levelId: currentLevelId,
@@ -523,6 +540,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
   }
 
   function startStandaloneGame() {
+    if (standaloneState && ['intro', 'playing'].includes(standaloneState.status)) return;
     if (!standaloneState) initStandaloneGame();
     standaloneState.status = "intro";
     applyState(standaloneState);
@@ -548,7 +566,6 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         applyState(standaloneState);
       }, 1000);
     }, 2500);
-  }1000);
   }
 
   function moveStandaloneAvatar(dx, dz) {
@@ -684,6 +701,14 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
   function applyState(state) {
     if (!state) return;
 
+    renderPlayerSlots(state.players || []);
+    el.startBtn.disabled = false;
+    const mission = MISSIONS[state.levelId || currentLevelId];
+    if (mission) {
+      if (el.levelNameDisplay) el.levelNameDisplay.textContent = mission.name;
+      if (el.levelSubtitleDisplay) el.levelSubtitleDisplay.textContent = mission.subtitle || '';
+    }
+
     if (state.status === 'lobby') {
       el.lobbyOverlay.classList.remove('hide');
       el.resultsOverlay.classList.add('hide');
@@ -768,6 +793,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       socket.emit('game:reset');
     } else {
       if (standaloneTimer) clearInterval(standaloneTimer);
+      initStandaloneGame();
       el.lobbyOverlay.classList.remove('hide');
       el.resultsOverlay.classList.add('hide');
       buildCurrentLevel(MISSIONS[currentLevelId]);
@@ -780,6 +806,8 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
     if (socket && !isStandalone) {
       socket.emit('game:reset');
     } else {
+      if (standaloneTimer) clearInterval(standaloneTimer);
+      initStandaloneGame();
       el.lobbyOverlay.classList.remove('hide');
       buildCurrentLevel(MISSIONS[currentLevelId]);
     }
@@ -792,6 +820,9 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       buildCurrentLevel(MISSIONS[currentLevelId]);
       if (socket && !isStandalone) {
         socket.emit('game:setLevel', { levelId: currentLevelId });
+      } else {
+        if (standaloneTimer) clearInterval(standaloneTimer);
+        initStandaloneGame();
       }
     });
   }
