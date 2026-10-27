@@ -2,8 +2,39 @@
   const urlParams = new URLSearchParams(window.location.search);
   const customServer = urlParams.get('server') || localStorage.getItem('chaos_server_url');
   const serverUrl = customServer || window.location.origin;
+  const paramRoom = urlParams.get('room');
+  const paramPeer = urlParams.get('peer');
 
-  // Unified Network Client (Supports Socket.IO and WebRTC PeerJS fallback for Vercel)
+  // Comprehensive WebRTC STUN + TURN config for reliable 4G/5G cross-network connections
+  const RTC_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      // PeerJS free TURN relays
+      {
+        urls: [
+          'turn:eu-0.turn.peerjs.com:3478',
+          'turn:us-0.turn.peerjs.com:3478'
+        ],
+        username: 'peerjs',
+        credential: 'peerjsp'
+      },
+      // OpenRelay community TURN relays (traverses symmetric cellular CGNAT)
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp'
+        ],
+        username: 'openrelay',
+        credential: 'openrelay'
+      }
+    ]
+  };
+
+  // Unified Network Client (Supports Socket.IO and WebRTC PeerJS fallback for Vercel/Static)
   class NetworkClient {
     constructor() {
       this.handlers = new Map();
@@ -42,22 +73,33 @@
     }
 
     connect(url, targetRoomCode) {
-      const isVercel = window.location.hostname.includes('vercel.app');
+      const isOnlineStatic = window.location.hostname.includes('vercel.app') ||
+                             window.location.hostname.includes('github.io') ||
+                             window.location.hostname.includes('netlify.app');
 
-      // If on Vercel without a custom backend server, skip Socket.IO and connect via WebRTC PeerJS directly
-      if (isVercel && !customServer) {
-        console.log("[Mobile] Vercel environment detected — connecting via WebRTC PeerJS.");
+      // If on serverless/static host without a custom backend server, skip Socket.IO and connect via WebRTC PeerJS directly
+      if (isOnlineStatic && !customServer) {
+        console.log("[Mobile] Static web environment detected — connecting via WebRTC PeerJS with STUN+TURN.");
         this.connectPeer(targetRoomCode);
         return;
       }
 
       if (typeof io !== 'undefined') {
         try {
-          this.socket = io(url, { timeout: 3500, reconnectionAttempts: 2 });
+          this.socket = io(url, {
+            timeout: 6000,
+            reconnectionAttempts: 4,
+            transports: ["websocket", "polling"],
+            extraHeaders: { "Bypass-Tunnel-Reminder": "true" }
+          });
 
           this.socket.on('connect', () => {
             console.log("[Mobile] Connected via Socket.IO:", this.socket.id);
             this.connected = true;
+            if (el.headerRoleBadge) {
+              el.headerRoleBadge.textContent = "ONLINE (LIVE)";
+              el.headerRoleBadge.style.color = "var(--green)";
+            }
             this.flushQueue();
           });
 
@@ -91,19 +133,14 @@
         return;
       }
 
-      const hostPeerId = `chaos-room-${code.toLowerCase()}`;
+      const hostPeerId = paramPeer || `chaos-room-${code.toLowerCase()}`;
       console.log(`[Mobile] Connecting to WebRTC Host: ${hostPeerId}`);
 
       try {
         if (!this.peer) {
           this.peer = new Peer(null, {
             debug: 1,
-            config: {
-              iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:global.stun.twilio.com:3478' }
-              ]
-            }
+            config: RTC_CONFIG
           });
 
           this.peer.on('open', id => {
@@ -133,7 +170,7 @@
         console.log("[Mobile] WebRTC DataChannel connected to Host!");
         this.connected = true;
         if (el.headerRoleBadge) {
-          el.headerRoleBadge.textContent = "CONNECTED (P2P)";
+          el.headerRoleBadge.textContent = "CONNECTED (P2P 4G)";
           el.headerRoleBadge.style.color = "var(--green)";
         }
         this.flushQueue();

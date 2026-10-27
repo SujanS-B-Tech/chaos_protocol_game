@@ -5,10 +5,13 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:online": "node server.js --online",
+    "tunnel": "node server.js --online",
     "test": "node test/multiplayer_test.js"
   },
   "dependencies": {
     "express": "^4.21.2",
+    "localtunnel": "^2.0.2",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",
     "three": "^0.186.1"

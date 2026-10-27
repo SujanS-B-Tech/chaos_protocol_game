@@ -4,6 +4,7 @@ const path = require("path");
 const os = require("os");
 const { Server } = require("socket.io");
 const QRCode = require("qrcode");
+const tunnelManager = require("./tunnel");
 
 const app = express();
 const server = http.createServer(app);
@@ -12,11 +13,22 @@ const io = new Server(server, {
 });
 const PORT = process.env.PORT || 3000;
 
+// Auto-detect cloud deployment environments
+function detectPublicUrl() {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
+  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, "");
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`.replace(/\/$/, "");
+  if (process.env.FLY_APP_NAME) return `https://${process.env.FLY_APP_NAME}.fly.dev`.replace(/\/$/, "");
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`.replace(/\/$/, "");
+  if (process.env.PROJECT_DOMAIN) return `https://${process.env.PROJECT_DOMAIN}.glitch.me`.replace(/\/$/, "");
+  return null;
+}
+
 // Determine best host IP for local network connections
 function getLocalIp() {
-  if (process.env.PUBLIC_URL) {
-    return process.env.PUBLIC_URL.replace(/\/$/, "");
-  }
+  const detected = detectPublicUrl();
+  if (detected) return detected;
+
   const nets = os.networkInterfaces();
   const candidates = [];
   for (const name of Object.keys(nets)) {
@@ -48,8 +60,12 @@ function resolveBaseUrl(socket, clientOrigin, customUrl) {
   const formattedCustom = formatUrl(customUrl);
   if (formattedCustom) return formattedCustom;
 
-  if (process.env.PUBLIC_URL) {
-    return formatUrl(process.env.PUBLIC_URL);
+  const detectedCloud = detectPublicUrl();
+  if (detectedCloud) return detectedCloud;
+
+  const tunnelStatus = tunnelManager.getTunnelStatus();
+  if (tunnelStatus.active && tunnelStatus.url) {
+    return tunnelStatus.url;
   }
 
   const formattedOrigin = formatUrl(clientOrigin);
@@ -75,8 +91,16 @@ function resolveBaseUrl(socket, clientOrigin, customUrl) {
   return SERVER_BASE_URL;
 }
 
-const SERVER_BASE_URL = getLocalIp();
+let SERVER_BASE_URL = getLocalIp();
 console.log(`[Chaos Protocol] Network address for mobile players: ${SERVER_BASE_URL}`);
+
+// Express middleware
+app.use(express.json());
+app.use((_req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  next();
+});
 
 // Static files
 app.use(express.static(path.join(__dirname, "public")));
@@ -84,17 +108,92 @@ app.use("/vendor/three", express.static(path.join(__dirname, "node_modules/three
 
 app.get("/health", (_req, res) => res.json({ ok: true, timestamp: Date.now() }));
 
+// Helper to determine base URL from incoming HTTP request
+function getRequestBaseUrl(req) {
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
+  if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+    return `${proto}://${host}`;
+  }
+  const tunnel = tunnelManager.getTunnelStatus();
+  if (tunnel.active && tunnel.url) return tunnel.url;
+  return SERVER_BASE_URL;
+}
+
 // Network & QR code info endpoint
-app.get("/api/network-info", (_req, res) => {
+app.get("/api/network-info", (req, res) => {
+  const effectiveBaseUrl = getRequestBaseUrl(req);
   res.json({
-    baseUrl: SERVER_BASE_URL,
-    port: PORT
+    baseUrl: effectiveBaseUrl,
+    localUrl: SERVER_BASE_URL,
+    port: PORT,
+    tunnel: tunnelManager.getTunnelStatus()
   });
+});
+
+// Dynamic Tunnel endpoints for 1-click cross-network access
+app.get("/api/tunnel/status", (_req, res) => {
+  res.json({
+    ...tunnelManager.getTunnelStatus(),
+    baseUrl: SERVER_BASE_URL
+  });
+});
+
+app.post("/api/tunnel/start", async (_req, res) => {
+  try {
+    const status = await tunnelManager.startTunnel(PORT);
+    if (status && status.url) {
+      SERVER_BASE_URL = status.url;
+      console.log(`[Chaos Protocol] Online 4G tunnel activated: ${status.url}`);
+
+      // Broadcast new online join URL to all open rooms
+      for (const [code, room] of rooms.entries()) {
+        room.baseUrl = status.url;
+        const joinUrl = `${status.url}/join?room=${code}`;
+        io.to(room.hostSocketId).emit("room:created", {
+          code,
+          joinUrl,
+          baseUrl: status.url,
+          levelId: room.levelId,
+          mission: room.mission
+        });
+        addMessage(room, `🌐 Online 4G tunnel active: ${status.url}`, "good");
+        broadcastRoom(room);
+      }
+    }
+    res.json({ ok: true, ...status });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/tunnel/stop", async (_req, res) => {
+  try {
+    await tunnelManager.stopTunnel();
+    SERVER_BASE_URL = getLocalIp();
+    for (const [code, room] of rooms.entries()) {
+      room.baseUrl = SERVER_BASE_URL;
+      const joinUrl = `${SERVER_BASE_URL}/join?room=${code}`;
+      io.to(room.hostSocketId).emit("room:created", {
+        code,
+        joinUrl,
+        baseUrl: SERVER_BASE_URL,
+        levelId: room.levelId,
+        mission: room.mission
+      });
+      addMessage(room, `Switched back to Local IP: ${SERVER_BASE_URL}`, "info");
+      broadcastRoom(room);
+    }
+    res.json({ ok: true, baseUrl: SERVER_BASE_URL });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // Dynamic QR code generation endpoint
 app.get("/api/qr", async (req, res) => {
-  const targetUrl = req.query.url || `${SERVER_BASE_URL}/join`;
+  const effectiveBaseUrl = getRequestBaseUrl(req);
+  const targetUrl = req.query.url || `${effectiveBaseUrl}/join`;
   try {
     const dataUrl = await QRCode.toDataURL(targetUrl, {
       margin: 1,
@@ -1082,10 +1181,37 @@ io.on("connection", socket => {
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, "0.0.0.0", async () => {
+  const shouldAutoTunnel =
+    process.argv.includes("--online") ||
+    process.argv.includes("--tunnel") ||
+    process.env.ONLINE === "true" ||
+    process.env.TUNNEL === "true";
+
+  if (shouldAutoTunnel) {
+    try {
+      console.log(`[Chaos Protocol] Starting automated public online tunnel...`);
+      const status = await tunnelManager.startTunnel(PORT);
+      if (status && status.url) {
+        SERVER_BASE_URL = status.url;
+        console.log(`====================================================`);
+        console.log(` 🌐 CHAOS PROTOCOL ONLINE TUNNEL IS ACTIVE!`);
+        console.log(` Host screen:  http://localhost:${PORT}`);
+        console.log(` Online Join:  ${SERVER_BASE_URL}/join`);
+        console.log(` Public IP:    ${status.ip || "Ready"}`);
+        console.log(` Phones on ANY network (4G/5G, Wi-Fi) can now connect!`);
+        console.log(`====================================================`);
+        return;
+      }
+    } catch (e) {
+      console.warn(`[Chaos Protocol] Automated tunnel failed: ${e.message}. Using local network IP.`);
+    }
+  }
+
   console.log(`====================================================`);
   console.log(` CHAOS PROTOCOL SERVER ONLINE`);
   console.log(` Host screen:  http://localhost:${PORT}`);
   console.log(` Mobile join:  ${SERVER_BASE_URL}/join`);
+  console.log(` (To allow phones on 4G/different network, start with --online or click ⚡ GO ONLINE in the browser)`);
   console.log(`====================================================`);
 });

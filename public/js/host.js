@@ -96,18 +96,24 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
   function connectSocket(serverUrl) {
     try {
       updateServerStatus("CONNECTING TO SERVER...", "warn");
-      socket = io(serverUrl, { timeout: 6000, reconnectionAttempts: 4 });
+      socket = io(serverUrl, {
+        timeout: 8000,
+        reconnectionAttempts: 5,
+        transports: ["websocket", "polling"],
+        extraHeaders: { "Bypass-Tunnel-Reminder": "true" }
+      });
 
       socket.on('connect', () => {
         console.log("[Host] Connected to server:", socket.id);
         updateServerStatus("● LIVE MULTIPLAYER CONNECTED", "good");
         isStandalone = false;
         const savedPublicUrl = localStorage.getItem('chaos_public_join_url');
+        const isOnlineDomain = window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('127.0.0.1');
         socket.emit('room:create', {
           hostName: "Mission Control",
           levelId: currentLevelId,
-          clientOrigin: (window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('127.0.0.1')) ? window.location.origin : null,
-          publicUrl: savedPublicUrl || null
+          clientOrigin: isOnlineDomain ? window.location.origin : null,
+          publicUrl: savedPublicUrl || (isOnlineDomain ? window.location.origin : null)
         });
       });
 
@@ -125,6 +131,12 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         el.joinUrlDisplay.textContent = data.joinUrl;
 
         setQRCode(data.joinUrl);
+
+        // Check if joinUrl is a public online URL
+        const isOnlineUrl = data.joinUrl && !data.joinUrl.includes('localhost') && !data.joinUrl.includes('127.0.0.1') && !data.joinUrl.includes('192.168.') && !data.joinUrl.includes('172.168.') && !data.joinUrl.includes('10.');
+        if (isOnlineUrl && typeof updateTunnelUI === 'function') {
+          updateTunnelUI(true, data.baseUrl, null);
+        }
 
         if (world && data.mission) {
           buildCurrentLevel(data.mission);
@@ -158,8 +170,37 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
     }
   }
 
+  // Comprehensive WebRTC STUN + TURN config for reliable 4G/5G cross-network connections
+  const RTC_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      // PeerJS free TURN relays
+      {
+        urls: [
+          'turn:eu-0.turn.peerjs.com:3478',
+          'turn:us-0.turn.peerjs.com:3478'
+        ],
+        username: 'peerjs',
+        credential: 'peerjsp'
+      },
+      // OpenRelay community TURN relays (traverses symmetric cellular CGNAT)
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp'
+        ],
+        username: 'openrelay',
+        credential: 'openrelay'
+      }
+    ]
+  };
+
   // ----------------------------------------------------
-  // WEBRTC PEER-TO-PEER HOST (FOR SERVERLESS VERCEL)
+  // WEBRTC PEER-TO-PEER HOST (FOR SERVERLESS VERCEL & CLOUD)
   // ----------------------------------------------------
   function initPeerHost() {
     if (typeof Peer === 'undefined') {
@@ -176,18 +217,16 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
     try {
       peerHost = new Peer(hostPeerId, {
         debug: 1,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
-          ]
-        }
+        config: RTC_CONFIG
       });
 
       peerHost.on('open', id => {
         console.log(`[Host] WebRTC PeerHost is LIVE! ID: ${id}`);
-        updateServerStatus("● WEBRTC LIVE (VERCEL P2P)", "good");
-        showScreenAlert("📡 P2P WebRTC Host Online: Scan QR code from phones to join!", 3500);
+        updateServerStatus("● WEBRTC CLOUD P2P (4G/5G READY)", "good");
+        const joinUrl = `${window.location.origin}/join?room=${roomCode}&peer=${id}`;
+        el.joinUrlDisplay.textContent = joinUrl;
+        setQRCode(joinUrl);
+        showScreenAlert("📡 P2P WebRTC Online: Scan QR code from any phone on 4G or Wi-Fi!", 4000);
       });
 
       peerHost.on('error', err => {
@@ -853,7 +892,143 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
     });
   }
 
-  // Multi-Network / 4G Data Tunnel Configuration
+  // 1-Click GO ONLINE (4G / Any Network) Tunnel Controls
+  const goOnlineBtn = document.getElementById('goOnlineBtn');
+  const goOnlineIcon = document.getElementById('goOnlineIcon');
+  const goOnlineText = document.getElementById('goOnlineText');
+  const onlineInfoBox = document.getElementById('onlineInfoBox');
+  const stopTunnelBtn = document.getElementById('stopTunnelBtn');
+  const tunnelIpNotice = document.getElementById('tunnelIpNotice');
+  const tunnelIpVal = document.getElementById('tunnelIpVal');
+  const copyIpBtn = document.getElementById('copyIpBtn');
+  const networkNotice = document.getElementById('networkNotice');
+  const qrStatusPill = document.getElementById('qrStatusPill');
+
+  function updateTunnelUI(active, url, ip) {
+    if (active && url) {
+      if (goOnlineBtn) {
+        goOnlineBtn.style.background = "linear-gradient(135deg, rgba(34,197,94,0.25), rgba(34,197,94,0.1))";
+        goOnlineBtn.style.borderColor = "var(--green)";
+        goOnlineBtn.style.color = "var(--green)";
+        if (goOnlineIcon) goOnlineIcon.textContent = "🟢";
+        if (goOnlineText) goOnlineText.textContent = "ONLINE 4G/5G LINK ACTIVE";
+      }
+      if (onlineInfoBox) onlineInfoBox.style.display = "block";
+      if (networkNotice) {
+        networkNotice.innerHTML = `🟢 <strong>ONLINE MODE ACTIVE:</strong> Any phone on 4G/5G or outside Wi-Fi can scan & join!`;
+        networkNotice.style.color = "var(--green)";
+      }
+      if (qrStatusPill) {
+        qrStatusPill.textContent = "🟢 SCAN TO JOIN (4G / ANY NETWORK)";
+        qrStatusPill.className = "pill good";
+      }
+      if (ip && tunnelIpNotice && tunnelIpVal) {
+        tunnelIpNotice.style.display = "block";
+        tunnelIpVal.textContent = ip;
+      }
+    } else {
+      if (goOnlineBtn) {
+        goOnlineBtn.style.background = "linear-gradient(135deg, rgba(0,240,255,0.22), rgba(0,240,255,0.08))";
+        goOnlineBtn.style.borderColor = "var(--cyan)";
+        goOnlineBtn.style.color = "var(--cyan)";
+        if (goOnlineIcon) goOnlineIcon.textContent = "⚡";
+        if (goOnlineText) goOnlineText.textContent = "GO ONLINE (ALLOW PHONES ON 4G/5G)";
+      }
+      if (onlineInfoBox) onlineInfoBox.style.display = "none";
+      if (networkNotice) {
+        networkNotice.textContent = "Phones and laptop must be on the same Wi-Fi, or switch to Online Public URL for 4G/5G.";
+        networkNotice.style.color = "var(--text-muted)";
+      }
+      if (qrStatusPill) {
+        qrStatusPill.textContent = "SCAN TO JOIN FROM SMARTPHONE";
+        qrStatusPill.className = "pill active";
+      }
+      if (tunnelIpNotice) tunnelIpNotice.style.display = "none";
+    }
+  }
+
+  // Auto-detect if host is already running on a public cloud domain
+  const isOnlineHost = window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('127.0.0.1');
+  if (isOnlineHost) {
+    updateTunnelUI(true, window.location.origin, null);
+    if (networkNotice) {
+      networkNotice.innerHTML = `🌐 <strong>ONLINE CLOUD HOST:</strong> Accessible from any phone on 4G/5G or any Wi-Fi worldwide!`;
+      networkNotice.style.color = "var(--green)";
+    }
+  } else if (!isStandalone) {
+    // Check tunnel status on start if connected to local backend
+    fetch('/api/tunnel/status')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.active && data.url) {
+          updateTunnelUI(true, data.url, data.ip);
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (goOnlineBtn) {
+    goOnlineBtn.addEventListener('click', async () => {
+      if (goOnlineText) goOnlineText.textContent = "CREATING PUBLIC 4G LINK...";
+      if (goOnlineIcon) goOnlineIcon.textContent = "⏳";
+      goOnlineBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/tunnel/start', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok && data.url) {
+          const newJoinUrl = `${data.url}/join?room=${roomCode}`;
+          el.joinUrlDisplay.textContent = newJoinUrl;
+          setQRCode(newJoinUrl);
+          updateTunnelUI(true, data.url, data.ip);
+          updateServerStatus("● ONLINE 4G TUNNEL ACTIVE", "good");
+          showScreenAlert("🌐 Online 4G tunnel created! Mobile phones on ANY network can now join.", 4500);
+
+          if (socket && socket.connected) {
+            socket.emit('room:setPublicUrl', { url: data.url });
+          }
+        } else {
+          throw new Error(data.error || "Failed to launch tunnel");
+        }
+      } catch (err) {
+        console.error("Tunnel creation error:", err);
+        alert("Failed to start online tunnel automatically: " + err.message + "\nYou can still use the Custom Public URL box below.");
+        updateTunnelUI(false);
+      } finally {
+        goOnlineBtn.disabled = false;
+      }
+    });
+  }
+
+  if (stopTunnelBtn) {
+    stopTunnelBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/tunnel/stop', { method: 'POST' });
+        const data = await res.json();
+        updateTunnelUI(false);
+        if (data && data.baseUrl) {
+          const newJoinUrl = `${data.baseUrl}/join?room=${roomCode}`;
+          el.joinUrlDisplay.textContent = newJoinUrl;
+          setQRCode(newJoinUrl);
+        }
+        updateServerStatus("● LOCAL WI-FI NETWORK", "good");
+        showScreenAlert("Switched back to local Wi-Fi mode.", 3000);
+      } catch (err) {
+        console.error("Failed to stop tunnel:", err);
+      }
+    });
+  }
+
+  if (copyIpBtn && tunnelIpVal) {
+    copyIpBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(tunnelIpVal.textContent).then(() => {
+        copyIpBtn.textContent = "COPIED!";
+        setTimeout(() => { copyIpBtn.textContent = "COPY"; }, 2000);
+      });
+    });
+  }
+
+  // Multi-Network / Custom Data Tunnel Configuration
   const toggleNetworkBtn = document.getElementById('toggleNetworkModeBtn');
   const customUrlBox = document.getElementById('customUrlBox');
   const customUrlInput = document.getElementById('customUrlInput');
@@ -894,6 +1069,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         el.joinUrlDisplay.textContent = newUrl;
         setQRCode(newUrl);
       }
+      updateTunnelUI(true, val, null);
       updateServerStatus("● PUBLIC TUNNEL ACTIVE", "good");
       showScreenAlert("🌐 Public Join URL active! QR code updated for 4G/different networks.", 4000);
     });
@@ -906,6 +1082,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       if (socket && socket.connected) {
         socket.emit('room:setPublicUrl', { url: null });
       }
+      updateTunnelUI(false);
       updateServerStatus("● LOCAL NETWORK", "good");
       showScreenAlert("Switched back to local Wi-Fi IP.", 3000);
     });

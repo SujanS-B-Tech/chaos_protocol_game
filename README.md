@@ -67,6 +67,11 @@ npm install
 ```
 
 ### 3. Launching Locally
+
+**On Windows:**
+Simply double-click `start.bat` (or run `.\start.bat` in terminal). It will automatically verify Node.js, install any missing dependencies, start the server, and open `http://localhost:3000` in your browser.
+
+**Via CLI / Cross-Platform:**
 ```bash
 npm start
 ```
@@ -87,26 +92,24 @@ The server will output:
 5. **Spectators**: Can watch the shared 3D screen, monitor live dimension stability, and listen to the team coordinate!
 
 ### 5. Connecting Phones on Another Network (Mobile 4G/5G or Different Wi-Fi)
-If players' phones are not on the same Wi-Fi network, a private local IP (e.g. `192.168.x.x`) cannot be reached. Use any of the following options:
+If players' phones are on mobile data (4G/5G) or a different network, a private local IP (e.g. `192.168.x.x`) cannot be reached. Chaos Protocol now provides **fully automated online support**:
 
-- **Option A (Instant Tunnel - Recommended)**:
-  1. Keep `npm start` running.
-  2. In a second terminal window, run:
-     ```bash
-     npx localtunnel --port 3000
-     ```
-     (or `ngrok http 3000` or `cloudflared tunnel --url http://localhost:3000`).
-  3. On the laptop game screen, click **🌐 CONNECT PHONES ON DIFFERENT NETWORK / 4G** under the QR code.
-  4. Paste your public HTTPS tunnel link (e.g., `https://xxxx.loca.lt`) and click **APPLY**.
-  5. The QR code on the laptop updates dynamically — any phone on any network can now scan and join!
+- **Method 1: One-Click Inside Browser (Zero Setup)**:
+  1. Start the server normally (`npm start` or double-click `start.bat`).
+  2. In the lobby screen on your laptop, click **⚡ GO ONLINE (ALLOW PHONES ON 4G/5G)** directly under the QR code.
+  3. The server instantly generates a secure public HTTPS tunnel link and updates the QR code within seconds.
+  4. Any phone on 4G, 5G, or any outside Wi-Fi network can scan and join immediately!
 
-- **Option B (Start with PUBLIC_URL environment variable)**:
-  ```powershell
-  $env:PUBLIC_URL="https://your-tunnel-url.loca.lt"; npm start
+- **Method 2: Start Directly in Online Mode via Terminal / CLI**:
+  ```bash
+  npm run start:online
   ```
+  *(or `node server.js --online` or double-click `start.bat` and press `1`)*.
+  The server boots directly with an automated public HTTPS tunnel and generates an online QR code from the start.
 
-- **Option C (Free Cloud Host)**:
-  Deploy to Render / Railway with `PUBLIC_URL=https://your-service.onrender.com`.
+- **Method 3: Deploy to Free Cloud Host (Render / Railway / Fly.io / Vercel)**:
+  - If deploying to **Render / Railway / Fly.io**: The server automatically detects cloud environment variables (`RENDER_EXTERNAL_URL`, `RAILWAY_PUBLIC_DOMAIN`, `FLY_APP_NAME`) and configures the QR code with your public HTTPS domain.
+  - If deploying to **Vercel / Netlify**: The frontend automatically connects phones to the host using WebRTC with built-in Google STUN and OpenRelay TURN servers, allowing peer-to-peer data channels to traverse cellular 4G/5G NAT firewalls seamlessly without requiring a persistent backend server!
 
 ---
 

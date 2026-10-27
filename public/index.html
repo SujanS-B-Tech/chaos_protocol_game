@@ -134,31 +134,49 @@
         <div class="lobby-grid">
           <!-- QR Code & Room Code -->
           <div class="qr-card">
-            <span class="pill active">SCAN TO JOIN FROM SMARTPHONE</span>
+            <span class="pill active" id="qrStatusPill">SCAN TO JOIN FROM SMARTPHONE</span>
             <img id="qrImage" class="qr-image" alt="Scan QR code to join" src="">
             <div style="font-size:12px;letter-spacing:0.15em;color:var(--text-muted)">OR ENTER ROOM CODE</div>
             <div class="room-code-tag" id="roomCodeDisplay">----</div>
             <div class="join-link-box" id="joinUrlDisplay">http://.../join</div>
-            <p style="font-size:12px;color:var(--text-muted);margin-top:10px;line-height:1.4">
-              Phones and laptop must be on the same Wi-Fi, or use a Public / Tunnel URL for 4G/5G mobile data.
+
+            <p id="networkNotice" style="font-size:12px;color:var(--text-muted);margin-top:10px;line-height:1.4">
+              Phones and laptop must be on the same Wi-Fi, or switch to Online Public URL for 4G/5G.
             </p>
-            <button id="toggleNetworkModeBtn" type="button" class="pill" style="margin-top:10px;font-size:11px;cursor:pointer;background:rgba(0,240,255,0.08);border:1px solid var(--cyan);color:var(--cyan);padding:8px 12px;width:100%;font-weight:700">
-              🌐 CONNECT PHONES ON DIFFERENT NETWORK / 4G
+
+            <!-- 1-Click GO ONLINE Tunnel Button -->
+            <button id="goOnlineBtn" type="button" class="pill" style="margin-top:12px;font-size:12px;cursor:pointer;background:linear-gradient(135deg, rgba(0,240,255,0.22), rgba(0,240,255,0.08));border:1px solid var(--cyan);color:var(--cyan);padding:10px 16px;width:100%;font-weight:800;letter-spacing:0.05em;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 0 14px rgba(0,240,255,0.15)">
+              <span id="goOnlineIcon">⚡</span>
+              <span id="goOnlineText">GO ONLINE (ALLOW PHONES ON 4G/5G)</span>
             </button>
-            <div id="customUrlBox" style="display:none;margin-top:10px;text-align:left;background:rgba(3,10,20,0.85);border:1px solid var(--border-line);border-radius:8px;padding:12px">
+
+            <!-- Active Online Tunnel Information Box -->
+            <div id="onlineInfoBox" style="display:none;margin-top:10px;width:100%;background:rgba(0,240,255,0.06);border:1px solid rgba(0,240,255,0.3);border-radius:8px;padding:10px;text-align:left;font-size:11px">
+              <div style="color:var(--cyan);font-weight:700;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">
+                <span>🟢 ONLINE 4G/5G LINK ACTIVE</span>
+                <button id="stopTunnelBtn" type="button" style="background:transparent;border:none;color:#ff5252;cursor:pointer;font-size:11px;font-weight:700">DISCONNECT</button>
+              </div>
+              <div style="color:var(--text-muted);line-height:1.4">
+                Phones on mobile data or external networks can scan the QR code to join directly.
+              </div>
+              <div id="tunnelIpNotice" style="margin-top:6px;display:none;color:#e2e8f0;font-size:11px">
+                Tunnel IP (if prompted): <code id="tunnelIpVal" style="color:var(--cyan);background:#071120;padding:2px 6px;border-radius:4px"></code>
+                <button id="copyIpBtn" type="button" style="background:transparent;border:1px solid #475569;color:#94a3b8;border-radius:4px;font-size:10px;padding:1px 5px;margin-left:4px;cursor:pointer">COPY</button>
+              </div>
+            </div>
+
+            <!-- Manual Custom / Tunnel URL Toggle -->
+            <button id="toggleNetworkModeBtn" type="button" class="pill" style="margin-top:8px;font-size:10px;cursor:pointer;background:transparent;border:1px solid #334155;color:#94a3b8;padding:5px 10px;width:100%">
+              ⚙ CUSTOM DOMAIN / TUNNEL LINK
+            </button>
+            <div id="customUrlBox" style="display:none;margin-top:10px;text-align:left;background:rgba(3,10,20,0.85);border:1px solid var(--border-line);border-radius:8px;padding:12px;width:100%">
               <label style="font-size:11px;color:var(--cyan);font-weight:700;display:block;margin-bottom:6px">
-                ENTER PUBLIC / TUNNEL URL:
+                ENTER CUSTOM PUBLIC URL:
               </label>
               <div style="display:flex;gap:6px;margin-bottom:8px">
                 <input id="customUrlInput" class="pill" placeholder="https://xxxx.loca.lt or ngrok" style="flex:1;background:#060d19;color:#fff;font-size:12px;padding:6px 10px;border-color:var(--border-line);text-align:left">
                 <button id="saveCustomUrlBtn" type="button" class="pill" style="background:var(--cyan);color:#030a14;font-weight:700;font-size:11px;padding:6px 12px;cursor:pointer">APPLY</button>
                 <button id="resetCustomUrlBtn" type="button" class="pill" style="background:transparent;color:#94a3b8;font-size:11px;padding:6px 8px;cursor:pointer" title="Reset to Local LAN IP">RESET</button>
-              </div>
-              <div style="font-size:11px;color:var(--text-muted);line-height:1.4">
-                <strong>Instant Free Tunnel (Zero Setup):</strong><br>
-                Run this in another terminal:<br>
-                <code style="color:var(--cyan);background:#071120;padding:2px 6px;border-radius:4px;display:inline-block;margin:3px 0">npx localtunnel --port 3000</code><br>
-                Paste the generated HTTPS link above & click Apply. The QR code will immediately update!
               </div>
             </div>
           </div>
