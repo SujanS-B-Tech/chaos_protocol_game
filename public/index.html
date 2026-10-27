@@ -111,13 +111,13 @@
 
     <!-- Lobby Modal Overlay -->
     <div id="lobbyOverlay" class="overlay-screen">
-      <div class="modal-content interactive">
+      <div class="modal-content interactive evidence-room">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-line);padding-bottom:16px">
           <div>
             <div class="brand-title" style="font-size:26px">
               CHAOS <span>PROTOCOL</span>
             </div>
-            <div class="brand-subtitle">ONE GAME, DIFFERENT REALITIES // CO-OP INSTALLATION</div>
+            <div class="brand-subtitle">THE EVIDENCE ROOM // COOPERATIVE FIELDWORK</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <span id="serverStatusBadge" class="pill warn">INITIALIZING...</span>
@@ -131,6 +131,22 @@
           </div>
         </div>
 
+        <section class="case-intro" aria-labelledby="caseTitle">
+          <div class="case-kicker">THE EVIDENCE ROOM / TEAM BRIEFING</div>
+          <h1 id="caseTitle">Every role holds a piece.</h1>
+          <p>Inspect the three field notes. Pin the evidence, connect your team, then enter the real 3D mission.</p>
+          <div class="case-board" id="caseBoard">
+            <div class="case-rule"><span id="caseNumber">CASE 01 / THE FRACTURED GATE</span><span>3 ROLES / ONE SHARED WORLD</span></div>
+            <div class="evidence-thread" aria-hidden="true"></div>
+            <div class="evidence-fragments">
+              <button class="evidence-note" type="button" data-evidence="0" aria-pressed="false"><span class="note-index">FIELD NOTE / 01</span><strong>Find<br>the path.</strong><span class="note-role">NAVIGATOR</span><span class="note-detail">Your phone has the route map. Guide the team through the world.</span><span class="pin-label">+ PIN EVIDENCE</span></button>
+              <button class="evidence-note" type="button" data-evidence="1" aria-pressed="false"><span class="note-index">FIELD NOTE / 02</span><strong>See<br>the unseen.</strong><span class="note-role">OBSERVER</span><span class="note-detail">Your phone reveals hazards. Warn the team before they move.</span><span class="pin-label">+ PIN EVIDENCE</span></button>
+              <button class="evidence-note" type="button" data-evidence="2" aria-pressed="false"><span class="note-index">FIELD NOTE / 03</span><strong>Make<br>the link.</strong><span class="note-role">CONTROLLER</span><span class="note-detail">Your phone controls the power grid. Connect nodes and open the exit.</span><span class="pin-label">+ PIN EVIDENCE</span></button>
+            </div>
+            <div class="case-footer"><p id="evidenceStatus" role="status">0 / 3 notes pinned. Tap each field note to inspect it.</p><button type="button" id="connectEvidence">CONNECT EVIDENCE ↗</button></div>
+          </div>
+        </section>
+        <details id="teamSetup" class="team-setup"><summary>Open team room / scan to join <span>↓</span></summary>
         <div class="lobby-grid">
           <!-- QR Code & Room Code -->
           <div class="qr-card">
@@ -185,7 +201,7 @@
           <div style="display:flex;flex-direction:column;justify-content:space-between">
             <div>
               <div class="card-heading" style="margin-bottom:14px">
-                <span>TEAM ROSTER (3 UNIQUE ROLES REQUIRED)</span>
+                <span>YOUR FIELD TEAM / THREE COMPLEMENTARY ROLES</span>
               </div>
               <div class="role-slots-container" id="roleSlots">
                 <!-- Dynamically populated role cards -->
@@ -195,7 +211,7 @@
             <div>
               <div class="test-mode-panel">
                 <div>
-                  <div style="font-size:13px;font-weight:700">KEYBOARD / SOLO MODE</div>
+                  <div style="font-size:13px;font-weight:700">SOLO PRACTICE / KEYBOARD</div>
                   <div style="font-size:11px;color:var(--text-muted)">Play directly on laptop with WASD / Arrow keys & E to activate</div>
                 </div>
                 <button type="button" id="soloPlayBtn" style="padding:8px 16px;font-size:13px;background:var(--cyan);color:#030a14;font-weight:800">
@@ -206,7 +222,7 @@
               <!-- Quick node test triggers -->
               <div id="testControls" style="margin-top:10px;display:flex;gap:8px">
                 <button type="button" class="secondary" style="flex:1;font-size:11px;padding:8px" data-test-node="2">NODE 3 (VIOLET)</button>
-                <button type="button" class="secondary" style="flex:1;font-size:11px;padding:8px" data-test-node="0">NODE 1 (CYAN)</button>
+                <button type="button" class="secondary" style="flex:1;font-size:11px;padding:8px" data-test-node="0">NODE 1 (TEAL)</button>
                 <button type="button" class="secondary" style="flex:1;font-size:11px;padding:8px" data-test-node="1">NODE 2 (AMBER)</button>
               </div>
 
@@ -216,6 +232,8 @@
             </div>
           </div>
         </div>
+        </details>
+        <div class="case-endnote">Existing missions, real co-op play. Laptop hosts the world; three phones share the clues. Want to explore alone? Open the team room and choose solo practice.</div>
       </div>
     </div>
 
@@ -245,6 +263,36 @@
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="/vendor/socket.io.min.js"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script>
+  (() => {
+    const pinned = new Set();
+    const board = document.getElementById('caseBoard');
+    const setup = document.getElementById('teamSetup');
+    const status = document.getElementById('evidenceStatus');
+    document.querySelectorAll('[data-evidence]').forEach(note => {
+      note.addEventListener('click', () => {
+        const id = note.dataset.evidence;
+        if (pinned.has(id)) pinned.delete(id); else pinned.add(id);
+        note.setAttribute('aria-pressed', String(pinned.has(id)));
+        note.querySelector('.pin-label').textContent = pinned.has(id) ? '✓ EVIDENCE PINNED' : '+ PIN EVIDENCE';
+        board.classList.remove('connected');
+        status.textContent = pinned.size + ' / 3 notes pinned. Each role sees a different part of the mission.';
+      });
+    });
+    document.getElementById('connectEvidence').addEventListener('click', () => {
+      if (pinned.size < 3) { status.textContent = 'Inspect all three field notes, or open the team room below to join directly.'; return; }
+      board.classList.add('connected');
+      status.textContent = 'Connection made. Three perspectives, one way out. Your team room is open below.';
+      setup.open = true;
+      setup.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    });
+    const select = document.getElementById('missionSelect');
+    function syncCase() { const option = select.selectedOptions[0]; document.getElementById('caseNumber').textContent = 'CASE 0' + select.value + ' / ' + option.textContent.replace(/^Mission \d+: /, '').toUpperCase(); }
+    select.addEventListener('change', syncCase);
+    new MutationObserver(syncCase).observe(document.getElementById('levelNameDisplay'), { childList:true, subtree:true, characterData:true });
+    syncCase();
+  })();
+  </script>
   <script src="/js/audio.js"></script>
   <script type="module" src="/js/host.js"></script>
 </body>
