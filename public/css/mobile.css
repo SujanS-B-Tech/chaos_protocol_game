@@ -39,6 +39,11 @@ body {
   overflow-x: hidden;
 }
 
+/* Screen transitions share this utility with the host UI. */
+.hide {
+  display: none !important;
+}
+
 /* Mobile Header */
 .mobile-header {
   background: var(--bg-surface);
