@@ -226,7 +226,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       peerHost.on('open', id => {
         console.log(`[Host] WebRTC PeerHost is LIVE! ID: ${id}`);
         updateServerStatus("● WEBRTC CLOUD P2P (4G/5G READY)", "good");
-        const joinUrl = `${window.location.origin}/join?room=${roomCode}&peer=${id}`;
+        const joinUrl = `${window.location.origin}/mobile.html?room=${roomCode}&peer=${id}`;
         el.joinUrlDisplay.textContent = joinUrl;
         setQRCode(joinUrl);
         showScreenAlert("📡 P2P WebRTC Online: Scan QR code from any phone on 4G or Wi-Fi!", 4000);
