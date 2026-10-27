@@ -238,7 +238,6 @@
   };
 
   // Pre-fill room code from URL query parameter if present
-  const paramRoom = urlParams.get('room');
   if (paramRoom && el.joinCodeInput) {
     el.joinCodeInput.value = paramRoom.toUpperCase().trim();
   }
@@ -328,8 +327,12 @@
       el.stabilityVal.textContent = `${state.stability}%`;
     }
 
-    // Render Role-Specific Interface
-    renderRoleInterface(state);
+    // Do not rebuild controls on every countdown tick, losing touch/click events.
+    const roleView = JSON.stringify({ ...state, timeLeft: 0, messages: [] });
+    if (roleView !== lastRoleView) {
+      renderRoleInterface(state);
+      lastRoleView = roleView;
+    }
 
     // Update Comms Feed
     if (state.messages && el.commsFeed) {
@@ -368,6 +371,8 @@
       renderControllerView(state);
     }
   }
+
+  let lastRoleView = null;
 
   // 1. NAVIGATOR VIEW
   function renderNavigatorView(state) {
