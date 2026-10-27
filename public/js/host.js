@@ -63,7 +63,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
   // Pre-populate UI so it NEVER looks empty or broken
   el.roomCodeDisplay.textContent = roomCode;
   el.roomCodeHeader.textContent = roomCode;
-  const initialJoinUrl = `${window.location.origin}/join?room=${roomCode}`;
+  const initialJoinUrl = `${window.location.origin}/mobile.html?room=${roomCode}`;
   el.joinUrlDisplay.textContent = initialJoinUrl;
 
   // Render QR Code immediately via high-speed CDN with SVG fallback
@@ -133,10 +133,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         extraHeaders: { "Bypass-Tunnel-Reminder": "true" }
       });
 
-      socket.on('connect', () => {
-        console.log("[Host] Connected to server:", socket.id);
-        updateServerStatus("● LIVE MULTIPLAYER CONNECTED", "good");
-        isStandalone = false;
+      function emitCreateRoom() {
         const savedPublicUrl = localStorage.getItem('chaos_public_join_url');
         const isOnlineDomain = window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('127.0.0.1');
         socket.emit('room:create', {
@@ -145,6 +142,26 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
           clientOrigin: isOnlineDomain ? window.location.origin : null,
           publicUrl: savedPublicUrl || (isOnlineDomain ? window.location.origin : null)
         });
+      }
+
+      socket.on('connect', () => {
+        console.log("[Host] Connected to server:", socket.id);
+        updateServerStatus("● LIVE MULTIPLAYER CONNECTED", "good");
+        isStandalone = false;
+        // On a reconnect, reattach to the existing room instead of stranding
+        // every player in a brand-new room with a new code.
+        let savedHost = null;
+        try { savedHost = JSON.parse(localStorage.getItem('chaos_host_session') || 'null'); } catch (_) {}
+        if (savedHost && savedHost.code && savedHost.hostToken) {
+          socket.emit('room:rehost', { code: savedHost.code, hostToken: savedHost.hostToken });
+        } else {
+          emitCreateRoom();
+        }
+      });
+
+      socket.on('room:rehostFailed', () => {
+        try { localStorage.removeItem('chaos_host_session'); } catch (_) {}
+        emitCreateRoom();
       });
 
       socket.on('connect_error', (err) => {
@@ -156,6 +173,10 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       socket.on('room:created', async data => {
         roomCode = data.code;
         currentLevelId = data.levelId;
+        // Persist the host session so a reconnect can reattach to this room
+        if (data.hostToken) {
+          try { localStorage.setItem('chaos_host_session', JSON.stringify({ code: data.code, hostToken: data.hostToken })); } catch (_) {}
+        }
         el.roomCodeDisplay.textContent = roomCode;
         el.roomCodeHeader.textContent = roomCode;
         el.joinUrlDisplay.textContent = data.joinUrl;
@@ -197,7 +218,23 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       updateServerStatus(isVercelHost ? "● WEBRTC CLOUD P2P (VERCEL)" : "● LOCAL 3D MODE", "good");
       el.startBtn.disabled = false;
       el.startBtn.textContent = "▶ START MISSION (SOLO / DEMO)";
-      initStandaloneGame();
+      let saved = null;
+      try { saved = JSON.parse(sessionStorage.getItem('chaos_peer_host_session') || 'null'); } catch (_) {}
+      if (saved && saved.updatedAt > Date.now() - 15 * 60 * 1000 && MISSIONS[saved.levelId] && saved.state) {
+        roomCode = saved.code;
+        currentLevelId = saved.levelId;
+        standaloneState = saved.state;
+        for (const p of saved.players || []) peerClients.set(p.id, { ...p, connected: false, conn: null });
+        el.roomCodeDisplay.textContent = roomCode;
+        el.roomCodeHeader.textContent = roomCode;
+        el.missionSelect.value = currentLevelId;
+        buildCurrentLevel(MISSIONS[currentLevelId]);
+        if (standaloneState.status === 'intro') standaloneState.status = 'playing';
+        applyState(standaloneState);
+        resumeStandaloneTimer();
+      } else {
+        initStandaloneGame();
+      }
       initPeerHost();
     }
   }
@@ -232,6 +269,10 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         showScreenAlert("📡 P2P WebRTC Online: Scan QR code from any phone on 4G or Wi-Fi!", 4000);
       });
 
+      peerHost.on('disconnected', () => {
+        if (peerHost && !peerHost.destroyed) peerHost.reconnect();
+      });
+
       peerHost.on('error', err => {
         console.warn("[Host] PeerHost error:", err.type, err.message);
         if (err.type === 'unavailable-id') {
@@ -239,7 +280,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
           roomCode = Math.random().toString(36).slice(2, 6).toUpperCase();
           el.roomCodeDisplay.textContent = roomCode;
           el.roomCodeHeader.textContent = roomCode;
-          const newJoin = `${window.location.origin}/join?room=${roomCode}`;
+          const newJoin = `${window.location.origin}/mobile.html?room=${roomCode}`;
           el.joinUrlDisplay.textContent = newJoin;
           setQRCode(newJoin);
           setTimeout(initPeerHost, 600);
@@ -259,13 +300,15 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
 
         conn.on('close', () => {
           console.log("[Host] Phone disconnected:", conn.peer);
-          peerClients.delete(conn.peer);
+          const player = peerClients.get(conn.peer);
+          if (player && player.conn === conn) { player.connected = false; player.conn = null; }
           broadcastPeerState();
         });
 
         conn.on('error', err => {
           console.warn("[Host] Peer connection error:", conn.peer, err);
-          peerClients.delete(conn.peer);
+          const player = peerClients.get(conn.peer);
+          if (player && player.conn === conn) { player.connected = false; player.conn = null; }
           broadcastPeerState();
         });
       });
@@ -277,6 +320,24 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
   function handlePeerClientMessage(conn, data) {
     if (!data || typeof data !== 'object') return;
     const { type } = data;
+
+    if (type === 'room:rejoin') {
+      const entry = typeof data.playerToken === 'string' && Array.from(peerClients.entries()).find(([, p]) => p.playerToken === data.playerToken);
+      if (String(data.code || '').toUpperCase() !== roomCode || !entry) {
+        conn.send({ type: 'session:expired' });
+        return;
+      }
+      const [oldId, player] = entry;
+      const oldConn = player.conn;
+      peerClients.delete(oldId);
+      Object.assign(player, { id: conn.peer, conn, connected: true });
+      peerClients.set(conn.peer, player);
+      if (oldConn && oldConn !== conn) oldConn.close();
+      conn.send({ type: 'room:joined', code: roomCode, playerId: conn.peer, name: player.name,
+        role: player.role, roleInfo: ROLE_INFO[player.role] || null, playerToken: player.playerToken, rejoined: true });
+      broadcastPeerState();
+      return;
+    }
 
     if (type === 'room:join') {
       if (String(data.code || '').trim().toUpperCase() !== roomCode) {
@@ -299,7 +360,8 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         conn,
         name: cleanName,
         role,
-        connected: true
+        connected: true,
+        playerToken: crypto.randomUUID()
       };
       peerClients.set(conn.peer, playerObj);
 
@@ -309,7 +371,8 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         playerId: conn.peer,
         name: cleanName,
         role,
-        roleInfo: ROLE_INFO[role] || null
+        roleInfo: ROLE_INFO[role] || null,
+        playerToken: playerObj.playerToken
       });
 
       showScreenAlert(`📱 ${cleanName} joined as ${role.toUpperCase()}!`, 3000);
@@ -323,7 +386,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
     }
 
     const client = peerClients.get(conn.peer);
-    if (!client) return;
+    if (!client || !client.connected || client.conn !== conn) return;
 
     if (type === 'player:move') {
       if (client.role !== 'navigator') return;
@@ -451,7 +514,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
 
     if (el.startBtn && isStandalone) {
       el.startBtn.disabled = false;
-      const count = publicPlayers.length;
+      const count = publicPlayers.filter(p => p.connected).length;
       if (count > 0) {
         el.startBtn.textContent = `▶ START MULTIPLAYER MISSION (${count}/3 READY)`;
       } else {
@@ -459,6 +522,7 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       }
     }
 
+    savePeerSession();
     for (const client of peerClients.values()) {
       if (client.conn && client.conn.open) {
         const payload = getFilteredPeerPayload(client.role, client.id);
@@ -553,7 +617,22 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
       applyState(standaloneState);
       showScreenAlert("DIMENSIONAL STABILIZERS ENGAGED. Communicate and advance!", 3000);
 
+      resumeStandaloneTimer();
+    }, 2500);
+  }
+
+  function savePeerSession() {
+    if (!isStandalone || !standaloneState) return;
+    try {
+      sessionStorage.setItem('chaos_peer_host_session', JSON.stringify({ code: roomCode,
+        levelId: currentLevelId, state: standaloneState, updatedAt: Date.now(),
+        players: Array.from(peerClients.values()).map(({ id, name, role, playerToken }) => ({ id, name, role, playerToken })) }));
+    } catch (_) {}
+  }
+
+  function resumeStandaloneTimer() {
       if (standaloneTimer) clearInterval(standaloneTimer);
+      if (!standaloneState || standaloneState.status !== "playing") return;
       standaloneTimer = setInterval(() => {
         if (!standaloneState || standaloneState.status !== "playing") return;
         standaloneState.timeLeft -= 1;
@@ -565,7 +644,6 @@ import { MISSIONS, ROLE_INFO } from './missions.js';
         }
         applyState(standaloneState);
       }, 1000);
-    }, 2500);
   }
 
   function moveStandaloneAvatar(dx, dz) {
